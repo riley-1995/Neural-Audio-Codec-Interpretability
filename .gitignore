@@ -222,3 +222,20 @@ __marimo__/
 .claude/
 .claudeignore
 
+# Attached LibriSpeech datasets
+data/LibriSpeech-Dev-Clean/
+data/LibriSpeech-Test-Clean/
+data/LibriSpeech-Train-Clean-100/
+
+# Attached LibriSpeech dataset archives
+data/dev-clean.tar.gz
+data/test-clean.tar.gz
+data/train-clean-100.tar.gz
+
+# Project rubric and instructions
+project.pdf
+
+# macOS metadata
+.DS_Store
+data/.DS_Store
+
