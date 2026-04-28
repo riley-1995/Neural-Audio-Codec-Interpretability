@@ -1,0 +1,86 @@
+
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{natbib}
+\usepackage{hyperref}
+\usepackage{titling}
+\usepackage{titlesec}
+\setlength{\droptitle}{-2em}
+\titlespacing*{\section}{0pt}{0.8em}{0.4em}
+\setlength{\parskip}{0.4em}
+\setlength{\parindent}{0em}
+
+\title{What Do Codec Tokens Encode?\\
+A Probing Analysis of Neural Audio Codec Representations}
+\author{Riley Denn \\ CSCI 682 -- Natural Language Processing}
+\date{Spring 2026}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\section*{Overview}
+
+Neural audio codecs compress raw speech waveforms into discrete sequences of learned token indices via vector quantization \citep{defossez2022highfidelity}. These tokens increasingly serve as inputs to speech language models, enabling continuous audio to be modeled using NLP techniques. Recent work has explored codec interpretability through visualization and information-theoretic analysis \citep{sadok2025,park2025}. However, the representational role of individual residual vector quantization (RVQ) layers remains insufficiently characterized.
+
+In NLP, linear probing is a widely used technique for evaluating whether linguistic information is linearly decodable from learned representations \citep{belinkov2022probing}. While probing has been extensively applied to text embeddings, it has not been systematically used to analyze RVQ layers in neural audio codecs. This project applies linear probing to quantify how linguistic and speaker-specific information distribute across RVQ depth.
+
+\section*{Research Question and Hypothesis}
+
+How are phoneme identity and speaker identity distributed across the RVQ layers of a neural audio codec? Phonemes are the smallest contrastive units that determine lexical meaning and operate at the same temporal scale as codec frames. Since accurate word recognition depends on preserving phoneme distinctions, early RVQ layers, which capture the most perceptually important components of the signal, are expected to encode phoneme information more strongly, while deeper layers are expected to carry more speaker-specific detail.
+
+\textbf{Hypothesis:} Phoneme information will be more strongly linearly decodable from earlier RVQ layers, while speaker identity will be more strongly decodable from deeper RVQ layers.
+
+\section*{Data and Methods}
+
+Experiments will use the LibriSpeech \texttt{train-clean-100} split \citep{panayotov2015librispeech}. Phoneme-level timestamps will be obtained from publicly available forced alignments, allowing each codec frame to be labeled with a phoneme. Speaker identity labels will be derived directly from LibriSpeech metadata.
+
+Audio will be encoded using the pretrained EnCodec model at 24 kHz and 6 kbps, producing eight RVQ layers \citep{defossez2022highfidelity}. For each layer, token indices will be extracted and mapped to their learned codebook embedding vectors.
+
+For each layer independently, a logistic regression classifier will be trained on frozen token embeddings to predict phoneme identity and speaker identity. No codec parameters will be updated. Performance will be evaluated using accuracy and macro-F1. If time permits, per-token phoneme entropy will be computed to measure token specialization.
+
+\section*{Expected Outcomes}
+
+Layer-wise probing results will quantify how phoneme and speaker information vary across RVQ depth. The resulting decodability curves will clarify whether representational specialization emerges across layers. Regardless of the outcome, this analysis will provide a structured, quantitative view of information distribution within neural audio codecs.
+
+\section*{AI Acknowledgement}
+
+Generative AI tools were used during the brainstorming phase of this project and to refine the structure and clarity of the written proposal. All technical decisions, interpretations, and final wording were reviewed and edited to ensure full understanding and accuracy.
+
+\bibliographystyle{plainnat}
+\begin{thebibliography}{}
+
+\bibitem[Belinkov(2022)]{belinkov2022probing}
+Yonatan Belinkov.
+\newblock Probing Classifiers: Promises, Shortcomings, and Advances.
+\newblock \emph{Computational Linguistics}, 2022.
+\newblock \url{https://aclanthology.org/2022.cl-1.7/}
+
+\bibitem[Défossez et al.(2022)]{defossez2022highfidelity}
+Alexandre Défossez, Jade Copet, Gabriel Synnaeve, and Yossi Adi.
+\newblock High Fidelity Neural Audio Compression.
+\newblock \emph{arXiv preprint arXiv:2210.13438}, 2022.
+\newblock \url{https://arxiv.org/abs/2210.13438}
+
+\bibitem[Panayotov et al.(2015)]{panayotov2015librispeech}
+Vassil Panayotov, Guoguo Chen, Daniel Povey, and Sanjeev Khudanpur.
+\newblock LibriSpeech: An ASR corpus based on public domain audio books.
+\newblock In \emph{ICASSP}, 2015.
+\newblock \url{https://www.openslr.org/12}
+
+\bibitem[Park et al.(2025)]{park2025}
+Jihwan Park, et al.
+\newblock Analysing the Language of Neural Audio Codecs.
+\newblock \emph{arXiv preprint arXiv:2509.01390}, 2025.
+\newblock \url{https://arxiv.org/abs/2509.01390}
+
+\bibitem[Sadok et al.(2025)]{sadok2025}
+Samir Sadok, Julien Hauret, and Eric Bavu.
+\newblock Bringing Interpretability to Neural Audio Codecs.
+\newblock In \emph{Interspeech}, 2025.
+\newblock \url{https://www.isca-archive.org/interspeech_2025/sadok25_interspeech.html}
+
+\end{thebibliography}
+
+\end{document}
