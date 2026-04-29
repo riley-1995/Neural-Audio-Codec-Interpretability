@@ -222,15 +222,15 @@ __marimo__/
 .claude/
 .claudeignore
 
-# Attached LibriSpeech datasets
-data/LibriSpeech-Dev-Clean/
-data/LibriSpeech-Test-Clean/
-data/LibriSpeech-Train-Clean-100/
+# LibriSpeech audio data (large binary files)
+data/LibriSpeech/
 
-# Attached LibriSpeech dataset archives
-data/dev-clean.tar.gz
-data/test-clean.tar.gz
-data/train-clean-100.tar.gz
+# Forced alignment TextGrids (large, download separately)
+data/alignments/
+
+# Embedding cache and model outputs (large NPZ files)
+results/cache/
+*.npz
 
 # Project rubric and instructions
 project.pdf

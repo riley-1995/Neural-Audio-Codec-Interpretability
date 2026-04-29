@@ -1,0 +1,32 @@
+[project]
+name = "neural-audio-codec-interpretability"
+version = "0.1.0"
+description = "Linear probing study of RVQ layers in EnCodec vs SpeechTokenizer"
+requires-python = ">=3.10"
+dependencies = [
+    "encodec",
+    "speechtokenizer",
+    "librosa>=0.10.0",
+    "scikit-learn>=1.5.0",
+    "matplotlib>=3.7.0",
+    "numpy>=1.24.0",
+    "tqdm",
+    "soundfile",
+    "scipy",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# ── PyTorch must be installed separately (platform-specific index URL) ──────────
+#
+# macOS M4 (MPS support built into the default PyPI wheel):
+#   uv pip install torch torchaudio
+#
+# Linux / A100 (CUDA 12.4):
+#   uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124
+#
+# Then install this project:
+#   uv pip install -e .
+# ─────────────────────────────────────────────────────────────────────────────────
