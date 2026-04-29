@@ -146,8 +146,3 @@ results/
 2. **Comparative codec analysis** — identical methodology applied to both codecs side-by-side
 3. **Pitch as regression** — continuous Hz prediction (MAE + R²) vs. MI estimation
 4. **Unified evaluation framework** — same probing pipeline across all 3 attributes
-
----
-
-## Plan File
-Full implementation plan: `/Users/akshaya/.claude/plans/so-we-are-working-virtual-hummingbird.md`
