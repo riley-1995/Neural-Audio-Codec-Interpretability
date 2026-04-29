@@ -222,8 +222,11 @@ __marimo__/
 .claude/
 .claudeignore
 
-# LibriSpeech audio data (large binary files)
-data/LibriSpeech/
+# LibriSpeech audio data (large binary files — never commit)
+data/LibriSpeech*/
+data/*.flac
+data/*.wav
+data/*.mp3
 
 # Forced alignment TextGrids (large, download separately)
 data/alignments/
