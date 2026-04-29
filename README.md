@@ -78,7 +78,6 @@ This project extends [Sadok et al. 2025](https://arxiv.org/abs/2506.04492) (*Bri
 │   ├── figures/                   # phoneme_probing.png, speaker_probing.png, pitch_probing.png
 │   └── results.pkl                # Raw metrics dict
 │
-├── BackgroundLiterature/          # Reference papers (arXiv PDFs)
 ├── proposal/                      # Project proposal (LaTeX + PDF)
 ├── pyproject.toml                 # Dependencies (uv-compatible)
 └── .gitignore
@@ -286,8 +285,6 @@ Plot 3 figures with chance-level reference lines
 ---
 
 ## Background Literature
-
-Papers are in `BackgroundLiterature/` as arXiv PDFs.
 
 | Paper | Role |
 |---|---|
