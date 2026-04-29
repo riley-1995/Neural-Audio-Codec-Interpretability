@@ -228,6 +228,9 @@ data/*.flac
 data/*.wav
 data/*.mp3
 
+# Background literature PDFs (cite with links in README instead)
+BackgroundLiterature/
+
 # Forced alignment TextGrids (large, download separately)
 data/alignments/
 
