@@ -67,7 +67,7 @@ Codec parameters are **never updated** — all probes use frozen embeddings.
 
 ```
 Neural-Audio-Codec-Interpretability/
-  requirements.txt
+  pyproject.toml
   main.py                          ← single entrypoint, runs full pipeline
   data/
     load_librispeech.py            ← iterates .flac files, yields Utterance objects
@@ -89,7 +89,10 @@ Neural-Audio-Codec-Interpretability/
 
 ### 1. Install dependencies
 ```bash
-pip install -r requirements.txt
+uv venv --python 3.12
+source .venv/bin/activate
+uv pip install torch torchaudio
+uv pip install -e .
 ```
 
 ### 2. Download required data
