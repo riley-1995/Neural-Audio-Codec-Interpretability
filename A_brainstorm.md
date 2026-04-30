@@ -9,7 +9,7 @@ how phoneme identity, speaker identity, and pitch distribute across RVQ layers i
 ## Research Question
 How are phoneme identity, speaker identity, and pitch distributed across the RVQ layers of
 EnCodec vs SpeechTokenizer? Does designing RVQ-1 for semantic alignment (SpeechTokenizer)
-produce stronger linear decodeability than emergent compression structure (EnCodec)?
+produce stronger linear decodability than emergent compression structure (EnCodec)?
 
 ## Hypothesis
 - Phoneme: concentrated in early RVQ layers; stronger in SpeechTokenizer RVQ-1 (by design)
