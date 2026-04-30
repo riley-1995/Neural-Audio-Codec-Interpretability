@@ -4,7 +4,6 @@ Expects LibriSpeech data at LIBRISPEECH_ROOT in the standard directory layout:
   <root>/<split>/<speaker_id>/<chapter_id>/<utterance>.flac
 """
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
