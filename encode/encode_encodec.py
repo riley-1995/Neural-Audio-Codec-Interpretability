@@ -12,7 +12,6 @@ Usage:
 
 import numpy as np
 import torch
-import torchaudio
 
 TARGET_SR = 24000
 TOKEN_RATE = 75.0       # tokens per second
