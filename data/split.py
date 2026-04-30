@@ -64,8 +64,14 @@ def split_utterances(
     for spk_entries in by_speaker.values():
         shuffled = list(spk_entries)
         rng.shuffle(shuffled)
-        # At least one utterance per speaker goes to eval
-        n_eval = max(1, round(len(shuffled) * eval_frac))
+        n_utt = len(shuffled)
+        # Keep approximately eval_frac in eval while preserving at least one
+        # training utterance for speakers that have multiple utterances.
+        if n_utt <= 1:
+            n_eval = 0
+        else:
+            n_eval = max(1, round(n_utt * eval_frac))
+            n_eval = min(n_eval, n_utt - 1)
         eval_.extend(shuffled[:n_eval])
         train.extend(shuffled[n_eval:])
 
