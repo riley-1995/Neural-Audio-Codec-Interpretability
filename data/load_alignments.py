@@ -2,7 +2,7 @@
 Load Montreal Forced Aligner (MFA) TextGrid alignments for LibriSpeech.
 
 Expected alignment file layout (MFA default output):
-  <alignments_root>/<speaker_id>/<utterance_id>.TextGrid
+  <alignments_root>/<speaker_id>/<chapter_id>/<utterance_id>.TextGrid
 
 Each TextGrid has a phoneme tier named "phones" with intervals like:
   xmin = 0.0, xmax = 0.05, text = "SIL"
