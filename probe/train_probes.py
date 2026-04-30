@@ -52,7 +52,6 @@ def _fit_classification_probe(X: np.ndarray, y: np.ndarray) -> LogisticRegressio
         max_iter=1000,
         solver="lbfgs",
         class_weight="balanced",
-        n_jobs=-1,
     )
     clf.fit(X, y)
     return clf
