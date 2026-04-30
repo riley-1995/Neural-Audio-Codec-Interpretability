@@ -4,8 +4,6 @@ Extract per-token pitch (F0 in Hz) from raw audio using librosa's YIN algorithm.
 Unvoiced frames are returned as NaN and excluded from linear regression training.
 """
 
-from typing import List
-
 import librosa
 import numpy as np
 import torch
