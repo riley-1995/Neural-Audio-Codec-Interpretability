@@ -33,6 +33,7 @@ def fit_label_encoders(
     Must be called once before train_probes or evaluate_probes so that both
     codecs and both splits share identical integer mappings.
     """
+    probe_dir.mkdir(parents=True, exist_ok=True)
     encoders: Dict[str, LabelEncoder] = {}
     for task, labels in [("phoneme", phoneme_labels), ("speaker", speaker_labels)]:
         le = LabelEncoder()
