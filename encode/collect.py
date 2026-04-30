@@ -162,6 +162,10 @@ def collect_bundle(
         count += 1
 
     def _bundle(layers, phones, spk, pitch_parts) -> Bundle:
+        if not layers[0]:
+            raise ValueError(
+                "No utterances were collected. Check alignment files and codec errors before training probes."
+            )
         return Bundle(
             embeddings=[np.concatenate(layers[i], axis=0) for i in range(NUM_LAYERS)],
             phonemes=np.array(phones),
