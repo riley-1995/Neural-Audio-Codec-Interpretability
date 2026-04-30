@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import matplotlib.pyplot as plt
-import numpy as np
 
 LAYERS = list(range(1, 9))
 COLORS = {"encodec": "#1f77b4", "speechtokenizer": "#ff7f0e"}
