@@ -12,18 +12,20 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 
-from data.load_librispeech import iter_librispeech
-
 # (flac_path, speaker_id, utterance_id)
 UttEntry = Tuple[str, str, str]
 
 
 def scan_utterance_paths(librispeech_root: str, split: str) -> List[UttEntry]:
     """Return a sorted list of (flac_path, speaker_id, utterance_id) for a split."""
-    entries = [
-        (utt.flac_path, utt.speaker_id, utt.utterance_id)
-        for utt in iter_librispeech(librispeech_root, split)
-    ]
+    split_root = Path(librispeech_root) / split
+    entries: List[UttEntry] = []
+
+    for flac_path in split_root.rglob("*.flac"):
+        rel_path = flac_path.relative_to(split_root)
+        speaker_id = rel_path.parts[0]
+        utterance_id = flac_path.stem
+        entries.append((str(flac_path), speaker_id, utterance_id))
     entries.sort(key=lambda x: x[2])   # deterministic order by utterance ID
     return entries
 
