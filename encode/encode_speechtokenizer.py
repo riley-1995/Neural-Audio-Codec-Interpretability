@@ -10,7 +10,6 @@ Setup:
     Download checkpoint files from the SpeechTokenizer repo:
       - speechtokenizer.pt   (model weights)
       - config.json          (model config)
-    Set SPEECHTOKENIZER_CKPT and SPEECHTOKENIZER_CONFIG env vars or pass paths directly.
 
 Usage:
     model = load_speechtokenizer(ckpt_path, config_path)
