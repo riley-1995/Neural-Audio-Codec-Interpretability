@@ -34,7 +34,7 @@ The comparative codec design (EnCodec vs SpeechTokenizer) is the key novelty.
 
 ## Method
 
-**Data:** LibriSpeech train-clean-100, 90/10 train/eval split at the token level.
+**Data:** LibriSpeech train-clean-100, 90/10 train/eval split at the utterance level, stratified by speaker, to avoid leakage.
 
 **Labels:**
 - Phoneme — from MFA forced alignment TextGrids (timestamp → token index mapping)
