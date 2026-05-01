@@ -13,6 +13,8 @@ dependencies = [
     "tqdm",
     "soundfile",
     "scipy",
+    "torch",
+    "torchaudio",
 ]
 
 [build-system]
