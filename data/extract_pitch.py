@@ -31,8 +31,8 @@ def extract_pitch_hz(
     """
     wav = audio.squeeze().numpy().astype(np.float32)
 
-    # hop_length: how many audio samples per codec token
-    hop_length = int(sample_rate / token_rate)
+    # hop_length: nearest integer number of audio samples per codec token
+    hop_length = round(sample_rate / token_rate)
 
     # YIN frame-level F0 — returns array of length ~num_tokens
     f0 = librosa.yin(
