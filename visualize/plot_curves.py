@@ -117,6 +117,7 @@ def plot_pitch(results: Dict[str, Dict], output_dir: str) -> None:
         metric_b="pitch_r2",  ylabel_b="R²  ↑ higher is better",
         title="Pitch (F0) — Linear Regression by RVQ Layer",
         output_path=str(Path(output_dir) / "pitch_probing.png"),
+        invert_a=True,
     )
 
 
