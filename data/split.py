@@ -49,6 +49,9 @@ def split_utterances(
     The split is saved to save_path (JSON) on first call so that results are
     reproducible across runs. Pass force=True to recompute from scratch.
     """
+    if not 0 <= eval_frac < 1:
+        raise ValueError(f"eval_frac must be in [0, 1), current value: {eval_frac}")
+
     if save_path.exists() and not force:
         with open(save_path) as f:
             saved = json.load(f)
