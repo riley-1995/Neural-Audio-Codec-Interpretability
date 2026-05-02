@@ -106,7 +106,7 @@ def plot_speaker(
         title="Speaker Identity — Linear Probe by RVQ Layer",
         output_path=str(Path(output_dir) / "speaker_probing.png"),
         chance_a=chance,
-        chance_b=chance,
+        chance_b=None,
     )
 
 
