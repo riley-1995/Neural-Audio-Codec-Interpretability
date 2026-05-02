@@ -68,6 +68,11 @@ def split_utterances(
             raise ValueError(
                 f"Invalid split JSON at {save_path}: 'train' and 'eval' must be lists"
             )
+        overlap = set(saved["train"]) & set(saved["eval"])
+        if overlap:
+            raise ValueError(
+                f"Invalid split JSON at {save_path}: 'train' and 'eval' must be disjoint"
+            )
 
         by_id = {e[2]: e for e in entries}
         train = [by_id[uid] for uid in saved["train"] if uid in by_id]
