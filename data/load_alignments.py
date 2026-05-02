@@ -70,14 +70,20 @@ def phoneme_labels_for_tokens(
     The phoneme assigned is the one with maximum overlap with that window.
     Tokens with no phoneme coverage are labeled "<SIL>".
 
-    Uses a moving-pointer sweep over sorted intervals — O(num_tokens + num_intervals).
+    Uses a moving-pointer sweep over sorted intervals. If `intervals` are already
+    sorted by start time (the usual MFA case), runtime is
+    O(num_tokens + num_intervals); otherwise, a fallback sort adds
+    O(num_intervals log num_intervals).
     """
     labels = ["<SIL>"] * num_tokens
     if not intervals or num_tokens == 0:
         return labels
 
-    # MFA outputs are already sorted by start time; sort defensively.
-    sorted_intervals = sorted(intervals, key=lambda iv: iv[0])
+    # MFA outputs are usually already sorted by start time; only sort if needed.
+    if all(intervals[i - 1][0] <= intervals[i][0] for i in range(1, len(intervals))):
+        sorted_intervals = intervals
+    else:
+        sorted_intervals = sorted(intervals, key=lambda iv: iv[0])
     num_intervals = len(sorted_intervals)
 
     # first_live: index of the earliest interval whose end time is still after
