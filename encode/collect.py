@@ -1,11 +1,11 @@
 """
 Encode utterances with both codecs, align phoneme/speaker/pitch labels,
-and cache per-utterance embeddings as NPZ files to avoid re-encoding on
-subsequent runs.
+and cache per-utterance embeddings, phonemes, and pitches as NPZ files to
+avoid re-encoding and re-extracting features on subsequent runs.
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, TypedDict
+from typing import List, Optional, Tuple, TypedDict
 
 import numpy as np
 import torchaudio
@@ -28,7 +28,7 @@ class Bundle(TypedDict):
     embeddings: List[np.ndarray]   # 8 arrays, each shape (N_tokens, embed_dim)
     phonemes:   np.ndarray         # (N_tokens,) string phoneme labels
     speakers:   np.ndarray         # (N_tokens,) string speaker IDs
-    pitch:      np.ndarray         # (N_tokens,) float32 Hz; NaN for unvoiced
+    pitches:    np.ndarray         # (N_tokens,) float32 Hz; NaN for unvoiced
 
 
 # ── Alignment ──────────────────────────────────────────────────────────────────
@@ -49,22 +49,87 @@ def _cache_path(cache_dir: Path, codec: str, utterance_id: str) -> Path:
 
 
 def _load_cached(
-    cache_dir: Path, codec: str, utterance_id: str
-) -> Optional[List[np.ndarray]]:
-    """Return 8 layer-embedding arrays from disk, or None if not cached yet."""
-    p = _cache_path(cache_dir, codec, utterance_id)
-    if not p.exists():
+    cache_dir: Path, codec: str, utterance_id: str,
+) -> Optional[Tuple[List[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]]:
+    """Return (embeddings, phonemes, pitches) from disk, or None if not cached.
+    phonemes and pitches are None when absent from an older cache file."""
+    path = _cache_path(cache_dir, codec, utterance_id)
+    if not path.exists():
         return None
-    with np.load(p) as data:
-        return [data[f"layer_{i}"] for i in range(NUM_LAYERS)]
+    with np.load(path, allow_pickle=False) as data:
+        embeddings = [data[f"layer_{i}"] for i in range(NUM_LAYERS)]
+        phonemes   = data["phonemes"] if "phonemes" in data else None
+        pitches    = data["pitches"] if "pitches" in data else None
+    return embeddings, phonemes, pitches
 
 
 def _save_cache(
-    cache_dir: Path, codec: str, utterance_id: str, embeddings: List[np.ndarray]
+    cache_dir: Path, codec: str, utterance_id: str,
+    embeddings: List[np.ndarray],
+    phonemes: np.ndarray,
+    pitches: np.ndarray,
 ) -> None:
-    p = _cache_path(cache_dir, codec, utterance_id)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(p, **{f"layer_{i}": emb for i, emb in enumerate(embeddings)})
+    path = _cache_path(cache_dir, codec, utterance_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cache_fields = {f"layer_{i}": emb for i, emb in enumerate(embeddings)}
+    cache_fields["phonemes"] = phonemes
+    cache_fields["pitches"] = pitches
+    np.savez(file=path, **cache_fields)  # pyright: ignore[reportArgumentType]
+
+
+# ── Per-utterance feature helpers ─────────────────────────────────────────────
+
+def _extract_features(
+    embeddings: List[np.ndarray],
+    audio,
+    sr: int,
+    phone_intervals,
+    token_rate: float,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Return (phonemes, pitches) aligned to the codec's token grid."""
+    num_tokens = embeddings[0].shape[0]
+    phones = np.array(phoneme_labels_for_tokens(phone_intervals, token_rate, num_tokens))
+    pitches = extract_pitch_hz(audio, sr, token_rate, num_tokens)
+    return phones, pitches
+
+
+def _get_utterance_data(
+    codec: str,
+    cached: Optional[Tuple[List[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]],
+    cache_dir: Path,
+    utterance_id: str,
+    encode_fn,
+    model,
+    audio,
+    sr,
+    phone_intervals,
+    token_rate: float,
+) -> Optional[Tuple[List[np.ndarray], np.ndarray, np.ndarray]]:
+    """Resolve (embeddings, phonemes, pitches) for one utterance and codec.
+
+    Handles three cases:
+        - No cache: encode audio, extract features, save everything.
+        - Partial cache (old file missing phonemes or pitches): reuse embeddings,
+          extract features from audio, re-save the updated cache.
+        - Full cache: return cached data immediately without touching audio.
+
+    Returns None if encoding fails; the caller should skip the utterance.
+    """
+    if cached is None:
+        try:
+            embeddings, _ = encode_fn(model, audio, sr)
+        except Exception as e:
+            print(f"  [{codec}] {utterance_id}: {e}")
+            return None
+        phones, pitches = _extract_features(embeddings, audio, sr, phone_intervals, token_rate)
+        _save_cache(cache_dir, codec, utterance_id, embeddings, phones, pitches)
+        return embeddings, phones, pitches
+
+    embeddings, phones, pitches = cached
+    if phones is None or pitches is None:
+        phones, pitches = _extract_features(embeddings, audio, sr, phone_intervals, token_rate)
+        _save_cache(cache_dir, codec, utterance_id, embeddings, phones, pitches)
+    return embeddings, phones, pitches
 
 
 # ── Main collection function ───────────────────────────────────────────────────
@@ -84,15 +149,16 @@ def collect_bundle(
       - Its TextGrid alignment file is missing.
       - Either codec raises an exception during encoding.
 
-    Embeddings are saved to cache_dir/{codec}/{utterance_id}.npz after encoding
-    so re-runs load from disk instead of re-encoding.
+    Embeddings, phonemes, and pitches are saved to
+    cache_dir/{codec}/{utterance_id}.npz after the first run so subsequent
+    runs load everything from disk without re-encoding or re-extracting.
 
     Args:
         utterance_entries: List of (flac_path, speaker_id, utterance_id).
         encodec_model:     Loaded EnCodec model.
         st_model:          Loaded SpeechTokenizer model.
         alignments_root:   Root of TextGrid alignment files.
-        cache_dir:         Directory for NPZ embedding cache.
+        cache_dir:         Directory for NPZ cache.
         max_utterances:    Stop after this many utterances (0 = no limit).
 
     Returns:
@@ -100,81 +166,80 @@ def collect_bundle(
             "embeddings": List of 8 ndarrays, each shape (N_tokens, embed_dim)
             "phonemes":   ndarray of shape (N_tokens,), dtype str
             "speakers":   ndarray of shape (N_tokens,), dtype str
-            "pitch":      ndarray of shape (N_tokens,), float32 (NaN = unvoiced)
+            "pitches":      ndarray of shape (N_tokens,), float32 (NaN = unvoiced)
     """
-    enc_layers = [[] for _ in range(NUM_LAYERS)]
-    st_layers  = [[] for _ in range(NUM_LAYERS)]
-    enc_phones: List[str] = []
-    st_phones:  List[str] = []
-    enc_spk:    List[str] = []
-    st_spk:     List[str] = []
-    enc_pitch:  List[np.ndarray] = []
-    st_pitch:   List[np.ndarray] = []
+    encdc_layers:   List[List[np.ndarray]] = [[] for _ in range(NUM_LAYERS)]
+    st_layers:      List[List[np.ndarray]] = [[] for _ in range(NUM_LAYERS)]
+    encdc_phonemes: List[np.ndarray] = []
+    st_phonemes:    List[np.ndarray] = []
+    encdc_speakers: List[str] = []
+    st_speakers:    List[str] = []
+    encdc_pitches:  List[np.ndarray] = []
+    st_pitches:     List[np.ndarray] = []
 
     count = 0
     for flac_path, speaker_id, utterance_id in tqdm(utterance_entries, desc="Collecting"):
         if max_utterances > 0 and count >= max_utterances:
             break
 
-        # Alignment must exist before we bother loading audio
+        # Alignment must exist before we try loading audio
         tg_path = _alignment_path(alignments_root, utterance_id)
         phone_intervals = load_textgrid_phones(str(tg_path))
         if not phone_intervals:
             continue
 
-        audio, sr = torchaudio.load(flac_path)
+        encdc_cached = _load_cached(cache_dir, "encodec", utterance_id)
+        st_cached = _load_cached(cache_dir, "speechtokenizer", utterance_id)
 
-        # ── EnCodec ────────────────────────────────────────────────────────
-        enc_embs = _load_cached(cache_dir, "encodec", utterance_id)
-        if enc_embs is None:
-            try:
-                enc_embs, _ = encodec_encode(encodec_model, audio, sr)
-            except Exception as e:
-                print(f"  [EnCodec] {utterance_id}: {e}")
-                continue
-            _save_cache(cache_dir, "encodec", utterance_id, enc_embs)
+        need_audio = (
+            encdc_cached is None or encdc_cached[1] is None or encdc_cached[2] is None or
+            st_cached is None or st_cached[1] is None or st_cached[2] is None
+        )
+        audio, sr = torchaudio.load(flac_path) if need_audio else (None, None)
 
-        # ── SpeechTokenizer ────────────────────────────────────────────────
-        st_embs = _load_cached(cache_dir, "speechtokenizer", utterance_id)
-        if st_embs is None:
-            try:
-                st_embs, _ = st_encode(st_model, audio, sr)
-            except Exception as e:
-                print(f"  [SpeechTokenizer] {utterance_id}: {e}")
-                continue   # skip whole utterance if either codec fails
-            _save_cache(cache_dir, "speechtokenizer", utterance_id, st_embs)
+        encdc_result = _get_utterance_data(
+            "encodec", encdc_cached, cache_dir, utterance_id,
+            encodec_encode, encodec_model, audio, sr, phone_intervals, ENCODEC_TOKEN_RATE,
+        )
+        if encdc_result is None:
+            continue
 
-        enc_ntok = enc_embs[0].shape[0]
-        st_ntok  = st_embs [0].shape[0]
+        st_result = _get_utterance_data(
+            "speechtokenizer", st_cached, cache_dir, utterance_id,
+            st_encode, st_model, audio, sr, phone_intervals, ST_TOKEN_RATE,
+        )
+        if st_result is None:
+            continue
 
-        # Align phoneme labels and extract pitch for each codec's token grid
-        enc_phones.extend(phoneme_labels_for_tokens(phone_intervals, ENCODEC_TOKEN_RATE, enc_ntok))
-        st_phones .extend(phoneme_labels_for_tokens(phone_intervals, ST_TOKEN_RATE,      st_ntok))
-        enc_spk   .extend([speaker_id] * enc_ntok)
-        st_spk    .extend([speaker_id] * st_ntok)
-        enc_pitch .append(extract_pitch_hz(audio, sr, ENCODEC_TOKEN_RATE, enc_ntok))
-        st_pitch  .append(extract_pitch_hz(audio, sr, ST_TOKEN_RATE,      st_ntok))
+        encdc_embeddings, encdc_phone_labels, encdc_pitch_values = encdc_result
+        st_embeddings, st_phone_labels, st_pitch_values = st_result
+
+        encdc_phonemes.append(encdc_phone_labels)
+        st_phonemes.append(st_phone_labels)
+        encdc_speakers.extend([speaker_id] * encdc_embeddings[0].shape[0])
+        st_speakers.extend([speaker_id] * st_embeddings[0].shape[0])
+        encdc_pitches.append(encdc_pitch_values)
+        st_pitches.append(st_pitch_values)
 
         for i in range(NUM_LAYERS):
-            enc_layers[i].append(enc_embs[i])
-            st_layers [i].append(st_embs [i])
+            encdc_layers[i].append(encdc_embeddings[i])
+            st_layers[i].append(st_embeddings[i])
 
         count += 1
 
-    def _bundle(layers, phones, spk, pitch_parts) -> Bundle:
+    def _bundle(layers, phonemes, speakers, pitches) -> Bundle:
         if not layers[0]:
             raise ValueError(
                 "No utterances were collected. Check alignment files and codec errors before training probes."
             )
         return Bundle(
             embeddings=[np.concatenate(layers[i], axis=0) for i in range(NUM_LAYERS)],
-            phonemes=np.array(phones),
-            speakers=np.array(spk),
-            pitch=(np.concatenate(pitch_parts) if pitch_parts
-                   else np.array([], dtype=np.float32)),
+            phonemes=np.concatenate(phonemes),
+            speakers=np.array(speakers),
+            pitches=(np.concatenate(pitches) if pitches else np.array([], dtype=np.float32)),
         )
 
     return (
-        _bundle(enc_layers, enc_phones, enc_spk, enc_pitch),
-        _bundle(st_layers,  st_phones,  st_spk,  st_pitch),
+        _bundle(encdc_layers, encdc_phonemes, encdc_speakers, encdc_pitches),
+        _bundle(st_layers, st_phonemes, st_speakers, st_pitches),
     )
