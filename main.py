@@ -123,11 +123,11 @@ def main():
         label_encoders=label_encoders,
     )
 
-    # ── Collect eval data (no cap; always use all eval utterances) ─────────────
+    # ── Collect eval data (honor the configured utterance cap) ─────────────────
     print("Collecting eval data...")
     enc_eval, st_eval = collect_bundle(
         eval_entries, enc_model, st_model,
-        args.alignments_root, cache_dir, max_utterances=0,
+        args.alignments_root, cache_dir, max_utterances=args.max_utterances,
     )
 
     # ── Evaluate ───────────────────────────────────────────────────────────────
