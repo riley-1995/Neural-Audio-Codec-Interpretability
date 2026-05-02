@@ -186,6 +186,68 @@ python main.py \
     --max_utterances   0
 ```
 
+### Local parallel probe run (recommended default profile)
+
+```bash
+python main.py \
+  --librispeech_root data/LibriSpeech \
+  --alignments_root  data/alignments/train-clean-100 \
+  --st_ckpt          /path/to/speechtokenizer.pt \
+  --st_config        /path/to/config.json \
+  --output_dir       results \
+  --max_utterances   0 \
+  --probe_exec_profile local \
+  --probe_workers    24
+```
+
+`--probe_workers 0` uses profile defaults.
+
+### Fast cache/probe warm-up on train-clean-100 (one flag)
+
+```bash
+python main.py \
+  --librispeech_root data/LibriSpeech \
+  --alignments_root  data/LibriSpeech-TextGrids/LibriSpeech/train-clean-100 \
+  --st_ckpt          data/SpeechTokenizer/speechtokenizer_hubert_avg/SpeechTokenizer.pt \
+  --st_config        data/SpeechTokenizer/speechtokenizer_hubert_avg/config.json \
+  --output_dir       results \
+  --split            train-clean-100 \
+  --max_utterances   200 \
+  --probe_exec_profile local-fast
+```
+
+`local-fast` preset behavior:
+- Uses aggressive local probe worker defaults for high-core machines.
+- Sets probe BLAS threads to 1 when not explicitly provided.
+- Sets probe classification max iterations to 300 when left at default.
+- Skips eval/plotting by default for faster cache and probe warm-up.
+
+Add `--run_eval` to force full evaluation while keeping other `local-fast` presets.
+
+### A100 workflow (single-node launcher)
+
+The repository includes [scripts/run_a100_probes.sh](scripts/run_a100_probes.sh), which forwards to `main.py` and keeps the same CLI behavior.
+
+```bash
+export LIBRISPEECH_ROOT=data/LibriSpeech
+export ALIGNMENTS_ROOT=data/alignments/train-clean-100
+export ST_CKPT=/path/to/speechtokenizer.pt
+export ST_CONFIG=/path/to/config.json
+export OUTPUT_DIR=results_a100
+export PROBE_EXEC_PROFILE=a100
+export PROBE_WORKERS=0
+
+bash scripts/run_a100_probes.sh
+```
+
+Set `PROBE_WORKERS` explicitly to pin concurrency for a specific node.
+
+For Slurm clusters, [scripts/run_a100_probes.slurm](scripts/run_a100_probes.slurm) wraps the same launcher:
+
+```bash
+sbatch scripts/run_a100_probes.slurm
+```
+
 ### Optional: train-clean-360 ablation
 
 ```bash
@@ -213,6 +275,12 @@ python main.py \
 | `--max_utterances` | `500` | Cap on utterances (0 = no cap) |
 | `--device` | `auto` | `auto` \| `cpu` \| `cuda` \| `mps` |
 | `--force_resplit` | off | Ignore cached `split.json` and recompute |
+| `--probe_exec_profile` | `local` | Probe training profile: `sequential` \| `local` \| `local-fast` \| `a100` |
+| `--probe_workers` | `0` | Max concurrent probe jobs (0 = profile default) |
+| `--probe_blas_threads` | `0` | BLAS/OpenMP threads per probe worker (0 = auto) |
+| `--probe_max_iter` | `1000` | Max iterations for phoneme/speaker logistic probes |
+| `--skip_eval` | off | Stop after probe training (skip eval + plotting) |
+| `--run_eval` | off | Force evaluation even when profile presets skip it |
 
 ---
 
@@ -237,7 +305,7 @@ Fit label encoders on training data (shared across both codecs)
   → label_encoder_phoneme.pkl, label_encoder_speaker.pkl
          │
          ▼
-Train 24 probes per codec (8 layers × 3 tasks):
+Train 48 probes via a shared dispatcher (2 codecs × 8 layers × 3 tasks):
   ├─ Phoneme → LogisticRegression (class_weight="balanced")
   ├─ Speaker → LogisticRegression (class_weight="balanced")
   └─ Pitch   → LinearRegression  (voiced frames only)
