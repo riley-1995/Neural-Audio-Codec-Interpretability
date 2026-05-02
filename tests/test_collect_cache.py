@@ -58,6 +58,17 @@ def test_missing_file(tmp_path):
     assert _load_cached(tmp_path, "encodec", "utt-999") is None
 
 
+def test_corrupt_cache_file_is_dropped_and_rebuilt(tmp_path):
+    npz_path = tmp_path / "encodec" / "utt-corrupt.npz"
+    npz_path.parent.mkdir(parents=True)
+    npz_path.write_bytes(b"")
+
+    result = _load_cached(tmp_path, "encodec", "utt-corrupt")
+
+    assert result is None
+    assert not npz_path.exists()
+
+
 def test_partial_cache_missing_pitches_loads_as_none(tmp_path):
     embeddings = _make_embeddings()
     phonemes = np.array(["AH", "B", "SIL"])
@@ -160,3 +171,114 @@ def test_collect_bundle_uses_full_cache_without_alignment_or_audio(tmp_path, mon
     np.testing.assert_array_equal(st_bundle["pitches"], st_pitches)
     np.testing.assert_array_equal(enc_bundle["speakers"], np.array(["speaker-1", "speaker-1", "speaker-1"]))
     np.testing.assert_array_equal(st_bundle["speakers"], np.array(["speaker-1", "speaker-1"]))
+
+
+def test_collect_bundle_respects_attempt_cap_even_on_codec_failures(tmp_path, monkeypatch):
+    entries = [
+        (f"fake-{i}.flac", "speaker-1", f"100-200-{i:04d}")
+        for i in range(5)
+    ]
+    enc_embeddings = _make_embeddings(num_tokens=1)
+    attempts = 0
+
+    def _fake_torchaudio_load(_path):
+        nonlocal attempts
+        attempts += 1
+        return np.zeros((1, 320), dtype=np.float32), 16000
+
+    def _fake_load_textgrid_phones(_path):
+        return [("AA", 0.0, 0.02)]
+
+    def _fake_extract_features(*_args, **_kwargs):
+        return np.array(["AA"]), np.array([110.0], dtype=np.float32)
+
+    def _fake_encodec(*_args, **_kwargs):
+        return enc_embeddings, 1
+
+    def _fake_st(*_args, **_kwargs):
+        raise RuntimeError("forced SpeechTokenizer failure")
+
+    monkeypatch.setattr("encode.collect.torchaudio.load", _fake_torchaudio_load)
+    monkeypatch.setattr("encode.collect.load_textgrid_phones", _fake_load_textgrid_phones)
+    monkeypatch.setattr("encode.collect._extract_features", _fake_extract_features)
+    monkeypatch.setattr("encode.collect.encodec_encode", _fake_encodec)
+    monkeypatch.setattr("encode.collect.st_encode", _fake_st)
+
+    with pytest.raises(ValueError, match="No utterances were collected"):
+        collect_bundle(
+            entries,
+            encodec_model=None,
+            st_model=None,
+            alignments_root="unused",
+            cache_dir=tmp_path,
+            max_utterances=2,
+        )
+
+    assert attempts == 2
+
+
+def test_collect_bundle_skips_audio_decode_failures(tmp_path, monkeypatch):
+    entries = [
+        ("bad.flac", "speaker-1", "100-200-0001"),
+        ("good.flac", "speaker-1", "100-200-0002"),
+    ]
+    embeddings = _make_embeddings(num_tokens=1)
+
+    def _fake_torchaudio_load(path):
+        if path == "bad.flac":
+            raise RuntimeError("decode failed")
+        return np.zeros((1, 320), dtype=np.float32), 16000
+
+    def _fake_load_textgrid_phones(_path):
+        return [("AA", 0.0, 0.02)]
+
+    def _fake_extract_features(*_args, **_kwargs):
+        return np.array(["AA"]), np.array([110.0], dtype=np.float32)
+
+    def _fake_encodec(*_args, **_kwargs):
+        return embeddings, 1
+
+    def _fake_st(*_args, **_kwargs):
+        return embeddings, 1
+
+    monkeypatch.setattr("encode.collect.torchaudio.load", _fake_torchaudio_load)
+    monkeypatch.setattr("encode.collect.load_textgrid_phones", _fake_load_textgrid_phones)
+    monkeypatch.setattr("encode.collect._extract_features", _fake_extract_features)
+    monkeypatch.setattr("encode.collect.encodec_encode", _fake_encodec)
+    monkeypatch.setattr("encode.collect.st_encode", _fake_st)
+
+    enc_bundle, st_bundle = collect_bundle(
+        entries,
+        encodec_model=None,
+        st_model=None,
+        alignments_root="unused",
+        cache_dir=tmp_path,
+        max_utterances=2,
+    )
+
+    assert enc_bundle["embeddings"][0].shape[0] == 1
+    assert st_bundle["embeddings"][0].shape[0] == 1
+    np.testing.assert_array_equal(enc_bundle["speakers"], np.array(["speaker-1"]))
+    np.testing.assert_array_equal(st_bundle["speakers"], np.array(["speaker-1"]))
+
+    assert (tmp_path / "_failed_audio" / "100-200-0001.txt").exists()
+
+    def _should_not_run(*_args, **_kwargs):
+        raise AssertionError("failed-audio cache should skip retrying unreadable utterances")
+
+    monkeypatch.setattr("encode.collect.load_textgrid_phones", _should_not_run)
+    monkeypatch.setattr("encode.collect.torchaudio.load", _should_not_run)
+    monkeypatch.setattr("encode.collect.encodec_encode", _should_not_run)
+    monkeypatch.setattr("encode.collect.st_encode", _should_not_run)
+
+    enc_bundle_2, st_bundle_2 = collect_bundle(
+        entries,
+        encodec_model=None,
+        st_model=None,
+        alignments_root="unused",
+        cache_dir=tmp_path,
+        max_utterances=2,
+    )
+
+    assert enc_bundle_2["embeddings"][0].shape[0] == 1
+    assert st_bundle_2["embeddings"][0].shape[0] == 1

@@ -48,6 +48,20 @@ def _cache_path(cache_dir: Path, codec: str, utterance_id: str) -> Path:
     return cache_dir / codec / f"{utterance_id}.npz"
 
 
+def _failed_audio_path(cache_dir: Path, utterance_id: str) -> Path:
+    return cache_dir / "_failed_audio" / f"{utterance_id}.txt"
+
+
+def _has_failed_audio(cache_dir: Path, utterance_id: str) -> bool:
+    return _failed_audio_path(cache_dir, utterance_id).exists()
+
+
+def _mark_failed_audio(cache_dir: Path, utterance_id: str, error: BaseException) -> None:
+    marker = _failed_audio_path(cache_dir, utterance_id)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(f"{type(error).__name__}: {error}\n", encoding="utf-8")
+
+
 def _load_cached(
     cache_dir: Path, codec: str, utterance_id: str,
 ) -> Optional[Tuple[List[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]]:
@@ -56,10 +70,18 @@ def _load_cached(
     path = _cache_path(cache_dir, codec, utterance_id)
     if not path.exists():
         return None
-    with np.load(path, allow_pickle=False) as data:
-        embeddings = [data[f"layer_{i}"] for i in range(NUM_LAYERS)]
-        phonemes   = data["phonemes"] if "phonemes" in data else None
-        pitches    = data["pitches"] if "pitches" in data else None
+    try:
+        with np.load(path, allow_pickle=False) as data:
+            embeddings = [data[f"layer_{i}"] for i in range(NUM_LAYERS)]
+            phonemes   = data["phonemes"] if "phonemes" in data else None
+            pitches    = data["pitches"] if "pitches" in data else None
+    except Exception as e:
+        print(f"  [cache] {codec}/{utterance_id}: {type(e).__name__}: {e}; rebuilding")
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        return None
     return embeddings, phonemes, pitches
 
 
@@ -166,7 +188,7 @@ def collect_bundle(
         st_model:          Loaded SpeechTokenizer model.
         alignments_root:   Root of TextGrid alignment files.
         cache_dir:         Directory for NPZ cache.
-        max_utterances:    Stop after this many utterances (0 = no limit).
+        max_utterances:    Process at most this many utterance entries (0 = no limit).
 
     Returns:
         (enc_bundle, st_bundle) — dicts with keys:
@@ -184,14 +206,17 @@ def collect_bundle(
     encdc_pitches:  List[np.ndarray] = []
     st_pitches:     List[np.ndarray] = []
 
-    count = 0
-    for flac_path, speaker_id, utterance_id in tqdm(utterance_entries, desc="Collecting"):
-        if max_utterances > 0 and count >= max_utterances:
-            break
+    entries = utterance_entries[:max_utterances] if max_utterances > 0 else utterance_entries
+    for flac_path, speaker_id, utterance_id in tqdm(entries, desc="Collecting"):
 
         encdc_cached = _load_cached(cache_dir, "encodec", utterance_id)
         st_cached = _load_cached(cache_dir, "speechtokenizer", utterance_id)
         needs_alignment = not (_cache_is_complete(encdc_cached) and _cache_is_complete(st_cached))
+
+        # If this utterance has previously failed audio decoding, skip it
+        # immediately on retries rather than spending tens of seconds failing again.
+        if needs_alignment and _has_failed_audio(cache_dir, utterance_id):
+            continue
 
         phone_intervals = None
         if needs_alignment:
@@ -201,7 +226,15 @@ def collect_bundle(
                 continue
 
         need_audio = needs_alignment
-        audio, sr = torchaudio.load(flac_path) if need_audio else (None, None)
+        if need_audio:
+            try:
+                audio, sr = torchaudio.load(flac_path)
+            except Exception as e:
+                _mark_failed_audio(cache_dir, utterance_id, e)
+                print(f"  [audio] {utterance_id}: {type(e).__name__}: {e}")
+                continue
+        else:
+            audio, sr = None, None
 
         encdc_result = _get_utterance_data(
             "encodec", encdc_cached, cache_dir, utterance_id,
@@ -230,8 +263,6 @@ def collect_bundle(
         for i in range(NUM_LAYERS):
             encdc_layers[i].append(encdc_embeddings[i])
             st_layers[i].append(st_embeddings[i])
-
-        count += 1
 
     def _bundle(layers, phonemes, speakers, pitches) -> Bundle:
         if not layers[0]:

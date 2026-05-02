@@ -26,6 +26,39 @@ TOKEN_RATE = 50.0       # tokens per second
 NUM_LAYERS = 8
 
 
+def _rvq_layers(model):
+    """Return the per-layer RVQ modules across SpeechTokenizer API variants."""
+    quantizer = getattr(model, "quantizer", None)
+    if quantizer is None:
+        raise AttributeError("SpeechTokenizer model has no 'quantizer' attribute")
+
+    if hasattr(quantizer, "quantizers"):
+        return quantizer.quantizers
+
+    vq = getattr(quantizer, "vq", None)
+    if vq is not None and hasattr(vq, "layers"):
+        return vq.layers
+
+    if hasattr(quantizer, "layers"):
+        return quantizer.layers
+
+    raise AttributeError("SpeechTokenizer quantizer does not expose RVQ layers")
+
+
+def _codebook_embed(layer):
+    """Return the codebook embedding tensor for one RVQ layer."""
+    if hasattr(layer, "_codebook") and hasattr(layer._codebook, "embed"):
+        return layer._codebook.embed
+
+    codebook = getattr(layer, "codebook", None)
+    if codebook is None:
+        raise AttributeError("RVQ layer does not expose a codebook")
+
+    if hasattr(codebook, "embed"):
+        return codebook.embed
+    return codebook
+
+
 def load_speechtokenizer(ckpt_path: str, config_path: str, device: str = "cpu"):
     """
     Load pretrained SpeechTokenizer model.
@@ -75,16 +108,26 @@ def encode(model, audio: torch.Tensor, sample_rate: int):
         codes = model.encode(audio)
 
     codes = codes.squeeze(1)        # (num_layers, num_tokens)
+    if codes.shape[0] < NUM_LAYERS:
+        raise ValueError(
+            f"SpeechTokenizer returned {codes.shape[0]} layers; expected at least {NUM_LAYERS}"
+        )
+
+    layers = _rvq_layers(model)
+    if len(layers) < NUM_LAYERS:
+        raise ValueError(
+            f"SpeechTokenizer quantizer exposes {len(layers)} layers; expected at least {NUM_LAYERS}"
+        )
+
     num_tokens = codes.shape[1]
 
     # Extract per-layer codebook embeddings
     embeddings = []
     for layer_idx in range(NUM_LAYERS):
-        # Access the RVQ quantizer for this layer
-        quantizer = model.quantizer.quantizers[layer_idx]
-        codebook = quantizer._codebook.embed   # (codebook_size, embed_dim)
-        token_ids = codes[layer_idx]           # (num_tokens,)
-        layer_emb = codebook[token_ids].cpu().numpy().astype(np.float32)
+        codebook = _codebook_embed(layers[layer_idx])
+        token_ids = codes[layer_idx].long()    # (num_tokens,)
+        layer_emb = torch.index_select(codebook, dim=0, index=token_ids)
+        layer_emb = layer_emb.detach().cpu().numpy().astype(np.float32)
         embeddings.append(layer_emb)
 
     return embeddings, num_tokens
