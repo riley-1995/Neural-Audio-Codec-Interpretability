@@ -7,6 +7,7 @@ runs so the exact same utterances are always in train vs eval.
 
 import json
 from collections import defaultdict
+from json import JSONDecodeError
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -53,8 +54,21 @@ def split_utterances(
         raise ValueError(f"eval_frac must be in [0, 1), current value: {eval_frac}")
 
     if save_path.exists() and not force:
-        with open(save_path) as f:
-            saved = json.load(f)
+        try:
+            with open(save_path) as f:
+                saved = json.load(f)
+        except JSONDecodeError as e:
+            raise ValueError(f"Malformed split JSON at {save_path}: {e}") from e
+
+        if not isinstance(saved, dict) or "train" not in saved or "eval" not in saved:
+            raise ValueError(
+                f"Invalid split JSON at {save_path}: expected keys 'train' and 'eval'"
+            )
+        if not isinstance(saved["train"], list) or not isinstance(saved["eval"], list):
+            raise ValueError(
+                f"Invalid split JSON at {save_path}: 'train' and 'eval' must be lists"
+            )
+
         by_id = {e[2]: e for e in entries}
         train = [by_id[uid] for uid in saved["train"] if uid in by_id]
         eval_ = [by_id[uid] for uid in saved["eval"]  if uid in by_id]
@@ -75,7 +89,7 @@ def split_utterances(
         n_utt = len(shuffled)
         # Keep approximately eval_frac in eval while preserving at least one
         # training utterance for speakers that have multiple utterances.
-        if n_utt <= 1:
+        if n_utt <= 1 or eval_frac == 0.0:
             n_eval = 0
         else:
             n_eval = max(1, round(n_utt * eval_frac))
