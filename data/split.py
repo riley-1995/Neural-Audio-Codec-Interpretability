@@ -11,6 +11,8 @@ from json import JSONDecodeError
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from data._librispeech_layout import validate_librispeech_entry
+
 import numpy as np
 
 # (flac_path, speaker_id, utterance_id)
@@ -28,29 +30,7 @@ def scan_utterance_paths(librispeech_root: str, split: str) -> List[UttEntry]:
     entries: List[UttEntry] = []
 
     for flac_path in split_root.rglob("*.flac"):
-        rel_path = flac_path.relative_to(split_root)
-        if len(rel_path.parts) != 3:
-            raise ValueError(
-                f"Malformed LibriSpeech path: {flac_path}. "
-                "Expected <split>/<speaker>/<chapter>/<utterance>.flac"
-            )
-
-        speaker_id = rel_path.parts[0]
-        chapter_id = rel_path.parts[1]
-        parts = flac_path.stem.split("-")
-        if len(parts) != 3:
-            raise ValueError(
-                f"Malformed LibriSpeech utterance filename: {flac_path.name}. "
-                "Expected <speaker>-<chapter>-<utterance>.flac"
-            )
-        if parts[0] != speaker_id or parts[1] != chapter_id:
-            raise ValueError(
-                f"LibriSpeech path/filename mismatch for {flac_path}: "
-                f"directory speaker/chapter is {speaker_id}/{chapter_id}, "
-                f"but filename starts with {parts[0]}/{parts[1]}"
-            )
-
-        utterance_id = flac_path.stem
+        speaker_id, _chapter_id, utterance_id = validate_librispeech_entry(flac_path, split_root)
         entries.append((str(flac_path), speaker_id, utterance_id))
     entries.sort(key=lambda x: x[2])   # deterministic order by utterance ID
     return entries
@@ -116,7 +96,8 @@ def split_utterances(
             raise ValueError(
                 "Invalid split JSON at "
                 f"{save_path}: cached IDs do not match current entries "
-                f"(missing={len(missing_ids)}, unknown={len(unknown_ids)})"
+                f"(missing={len(missing_ids)}, unknown={len(unknown_ids)}). "
+                "Re-run with force=True (--force_resplit) to recompute the split."
             )
 
         train = [by_id[uid] for uid in saved["train"]]

@@ -1,4 +1,5 @@
 import json
+import re
 
 import pytest
 import torch
@@ -265,7 +266,7 @@ def test_iter_librispeech_load_failure_has_context(tmp_path, monkeypatch):
 
     monkeypatch.setattr("data.load_librispeech.torchaudio.load", fake_load)
 
-    with pytest.raises(RuntimeError, match=f"{failing_path}"):
+    with pytest.raises(RuntimeError, match=re.escape(str(failing_path))):
         list(iter_librispeech(str(tmp_path), "train-clean-100"))
 
 
@@ -286,3 +287,82 @@ def test_scan_split_pipeline_consistency(tmp_path):
     assert len(entries) == 10
     assert len(train) + len(eval_) == 10
     assert set(e[2] for e in train).isdisjoint(set(e[2] for e in eval_))
+
+
+# ---------------------------------------------------------------------------
+# scan_utterance_paths - wrong directory depth
+# ---------------------------------------------------------------------------
+
+def test_scan_utterance_paths_wrong_depth_raises(tmp_path):
+    # File nested one level too deep (4 parts instead of 3)
+    split_root = tmp_path / "train-clean-100"
+    _touch(split_root / "100" / "001" / "extra" / "100-001-0001.flac")
+
+    with pytest.raises(ValueError, match="Malformed LibriSpeech path"):
+        scan_utterance_paths(str(tmp_path), "train-clean-100")
+
+
+# ---------------------------------------------------------------------------
+# split_utterances cache - non-string IDs and overlapping IDs
+# ---------------------------------------------------------------------------
+
+def test_split_utterances_non_string_id_in_cache_raises(tmp_path):
+    entries = [("/fake/100-001-0001.flac", "100", "100-001-0001")]
+    save_path = tmp_path / "split.json"
+    save_path.write_text(
+        json.dumps({"train": [42], "eval": []}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="all utterance IDs must be strings"):
+        split_utterances(entries, eval_frac=0.2, seed=1, save_path=save_path)
+
+
+def test_split_utterances_overlapping_ids_in_cache_raises(tmp_path):
+    entries = [
+        ("/fake/100-001-0001.flac", "100", "100-001-0001"),
+        ("/fake/100-001-0002.flac", "100", "100-001-0002"),
+    ]
+    save_path = tmp_path / "split.json"
+    save_path.write_text(
+        json.dumps({"train": ["100-001-0001"], "eval": ["100-001-0001", "100-001-0002"]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="utterance IDs must be unique"):
+        split_utterances(entries, eval_frac=0.2, seed=1, save_path=save_path)
+
+
+def test_split_utterances_stale_cache_error_mentions_force(tmp_path):
+    entries = [
+        ("/fake/100-001-0001.flac", "100", "100-001-0001"),
+        ("/fake/100-001-0002.flac", "100", "100-001-0002"),
+    ]
+    save_path = tmp_path / "split.json"
+    save_path.write_text(
+        json.dumps({"train": ["100-001-0001"], "eval": ["stale-uid"]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="force"):
+        split_utterances(entries, eval_frac=0.2, seed=1, save_path=save_path)
+
+
+# ---------------------------------------------------------------------------
+# iter_librispeech - wrong depth and path/filename mismatch
+# ---------------------------------------------------------------------------
+
+def test_iter_librispeech_wrong_depth_raises(tmp_path):
+    split_root = tmp_path / "train-clean-100"
+    _touch(split_root / "123" / "456" / "extra" / "123-456-0001.flac")
+
+    with pytest.raises(ValueError, match="Malformed LibriSpeech path"):
+        list(iter_librispeech(str(tmp_path), "train-clean-100"))
+
+
+def test_iter_librispeech_path_filename_mismatch_raises(tmp_path):
+    split_root = tmp_path / "train-clean-100"
+    _touch(split_root / "123" / "456" / "999-456-0001.flac")
+
+    with pytest.raises(ValueError, match="path/filename mismatch"):
+        list(iter_librispeech(str(tmp_path), "train-clean-100"))

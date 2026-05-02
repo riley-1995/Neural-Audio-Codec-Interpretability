@@ -11,6 +11,8 @@ from typing import Iterator
 import torch
 import torchaudio
 
+from data._librispeech_layout import validate_librispeech_entry
+
 
 @dataclass
 class Utterance:
@@ -30,32 +32,7 @@ def iter_librispeech(root: str, split: str = "train-clean-100") -> Iterator[Utte
         raise NotADirectoryError(f"LibriSpeech split is not a directory: {split_dir}")
 
     for flac_path in sorted(split_dir.rglob("*.flac")):
-        try:
-            relative_path = flac_path.relative_to(split_dir)
-        except ValueError:
-            raise ValueError(f"Found file outside split directory: {flac_path}")
-
-        if len(relative_path.parts) != 3:
-            raise ValueError(
-                f"Malformed LibriSpeech path: {flac_path}. "
-                "Expected <split>/<speaker>/<chapter>/<utterance>.flac"
-            )
-
-        speaker_id = flac_path.parent.parent.name
-        chapter_id = flac_path.parent.name
-        parts = flac_path.stem.split("-")
-        if len(parts) != 3:
-            raise ValueError(
-                f"Malformed LibriSpeech utterance filename: {flac_path.name}. "
-                "Expected <speaker>-<chapter>-<utterance>.flac"
-            )
-        if parts[0] != speaker_id or parts[1] != chapter_id:
-            raise ValueError(
-                f"LibriSpeech path/filename mismatch for {flac_path}: "
-                f"directory speaker/chapter is {speaker_id}/{chapter_id}, "
-                f"but filename starts with {parts[0]}/{parts[1]}"
-            )
-        utterance_id = flac_path.stem
+        speaker_id, _chapter_id, utterance_id = validate_librispeech_entry(flac_path, split_dir)
 
         try:
             audio, sr = torchaudio.load(str(flac_path))
