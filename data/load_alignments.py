@@ -69,21 +69,47 @@ def phoneme_labels_for_tokens(
     Each token at index i covers the time window [i/token_rate, (i+1)/token_rate].
     The phoneme assigned is the one with maximum overlap with that window.
     Tokens with no phoneme coverage are labeled "<SIL>".
+
+    Uses a moving-pointer sweep over sorted intervals. If `intervals` are already
+    sorted by start time (the usual MFA case), runtime is
+    O(num_tokens + num_intervals); otherwise, a fallback sort adds
+    O(num_intervals log num_intervals).
     """
     labels = ["<SIL>"] * num_tokens
+    if not intervals or num_tokens == 0:
+        return labels
 
-    for i in range(num_tokens):
-        t_start = i / token_rate
-        t_end = (i + 1) / token_rate
+    # MFA outputs are usually already sorted by start time; only sort if needed.
+    if all(intervals[i - 1][0] <= intervals[i][0] for i in range(1, len(intervals))):
+        sorted_intervals = intervals
+    else:
+        sorted_intervals = sorted(intervals, key=lambda iv: iv[0])
+    num_intervals = len(sorted_intervals)
+
+    # first_live: index of the earliest interval whose end time is still after
+    # the current token's start. Advances forward, never resets to 0.
+    first_live = 0
+
+    for token_idx in range(num_tokens):
+        token_start = token_idx / token_rate
+        token_end = (token_idx + 1) / token_rate
+
+        # Drop intervals that ended at or before this token's start time.
+        while first_live < num_intervals and sorted_intervals[first_live][1] <= token_start:
+            first_live += 1
+
+        # Scan forward for all intervals that could overlap this token window.
         best_label = "<SIL>"
         best_overlap = 0.0
-
-        for p_start, p_end, phone in intervals:
-            overlap = max(0.0, min(t_end, p_end) - max(t_start, p_start))
+        scan = first_live
+        while scan < num_intervals and sorted_intervals[scan][0] < token_end:
+            phone_start, phone_end, phoneme = sorted_intervals[scan]
+            overlap = max(0.0, min(token_end, phone_end) - max(token_start, phone_start))
             if overlap > best_overlap:
                 best_overlap = overlap
-                best_label = phone
+                best_label = phoneme
+            scan += 1
 
-        labels[i] = best_label
+        labels[token_idx] = best_label
 
     return labels
