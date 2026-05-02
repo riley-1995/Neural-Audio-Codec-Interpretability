@@ -94,7 +94,7 @@ def main():
         all_entries, args.eval_frac, SEED, split_path, force=args.force_resplit
     )
 
-    # ── Collect training data (embedding encode cache; align + pitch recomputed) ─
+    # ── Collect training data (embeddings, phonemes, and pitches all cached) ──────
     print(f"Collecting training data (cap={args.max_utterances or 'none'})...")
     enc_train, st_train = collect_bundle(
         train_entries, enc_model, st_model,
@@ -111,14 +111,14 @@ def main():
     print("Training EnCodec probes...")
     train_probes(
         enc_train["embeddings"], enc_train["phonemes"],
-        enc_train["speakers"],   enc_train["pitch"],
+        enc_train["speakers"],   enc_train["pitches"],
         codec_name="encodec", output_dir=str(probe_dir),
         label_encoders=label_encoders,
     )
     print("Training SpeechTokenizer probes...")
     train_probes(
         st_train["embeddings"], st_train["phonemes"],
-        st_train["speakers"],   st_train["pitch"],
+        st_train["speakers"],   st_train["pitches"],
         codec_name="speechtokenizer", output_dir=str(probe_dir),
         label_encoders=label_encoders,
     )
@@ -134,14 +134,14 @@ def main():
     print("Evaluating EnCodec probes...")
     enc_results = evaluate_probes(
         enc_eval["embeddings"], enc_eval["phonemes"],
-        enc_eval["speakers"],   enc_eval["pitch"],
+        enc_eval["speakers"],   enc_eval["pitches"],
         codec_name="encodec", probe_dir=str(probe_dir),
         label_encoders=label_encoders,
     )
     print("Evaluating SpeechTokenizer probes...")
     st_results = evaluate_probes(
         st_eval["embeddings"], st_eval["phonemes"],
-        st_eval["speakers"],   st_eval["pitch"],
+        st_eval["speakers"],   st_eval["pitches"],
         codec_name="speechtokenizer", probe_dir=str(probe_dir),
         label_encoders=label_encoders,
     )
