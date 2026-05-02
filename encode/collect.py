@@ -55,8 +55,8 @@ def _load_cached(
     p = _cache_path(cache_dir, codec, utterance_id)
     if not p.exists():
         return None
-    data = np.load(p)
-    return [data[f"layer_{i}"] for i in range(NUM_LAYERS)]
+    with np.load(p) as data:
+        return [data[f"layer_{i}"] for i in range(NUM_LAYERS)]
 
 
 def _save_cache(
