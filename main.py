@@ -94,7 +94,7 @@ def main():
         all_entries, args.eval_frac, SEED, split_path, force=args.force_resplit
     )
 
-    # ── Collect training data (encode + align + pitch, with NPZ cache) ─────────
+    # ── Collect training data (embedding encode cache; align + pitch recomputed) ─
     print(f"Collecting training data (cap={args.max_utterances or 'none'})...")
     enc_train, st_train = collect_bundle(
         train_entries, enc_model, st_model,
