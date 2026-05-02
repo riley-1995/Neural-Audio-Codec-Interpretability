@@ -228,6 +228,10 @@ data/LibriSpeech.zip
 data/LibriSpeech-TextGrids/
 data/LibriSpeech-TextGrids.zip
 
+# SpeechTokenizer checkpoint files (download separately from SpeechTokenizer repo)
+data/SpeechTokenizer/
+data/SpeechTokenizer.zip
+
 # Background literature PDFs (cite with links in README instead)
 BackgroundLiterature/
 
