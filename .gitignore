@@ -216,3 +216,35 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+#Claude
+.claude/
+.claudeignore
+
+# LibriSpeech audio data (large binary files — never commit)
+data/LibriSpeech*/
+data/*.flac
+data/*.wav
+data/*.mp3
+
+# Background literature PDFs (cite with links in README instead)
+BackgroundLiterature/
+
+# Forced alignment TextGrids (large, download separately)
+data/alignments/
+
+# Embedding cache and model outputs (large NPZ files)
+results/cache/
+*.npz
+
+# Project rubric and instructions
+project.pdf
+
+# Proposal files (keep locally, not in repo)
+proposal/Proposal\ Template.tex
+
+# macOS metadata
+.DS_Store
+data/.DS_Store
+
