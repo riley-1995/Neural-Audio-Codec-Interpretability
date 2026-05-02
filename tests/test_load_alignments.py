@@ -6,11 +6,8 @@ Run: python tests/test_load_alignments.py
 
 import random
 import timeit
-from typing import List, Tuple
 
 from data.load_alignments import phoneme_labels_for_tokens
-
-PhonemeInterval = Tuple[float, float, str]
 
 
 def _reference(intervals, token_rate, num_tokens):
