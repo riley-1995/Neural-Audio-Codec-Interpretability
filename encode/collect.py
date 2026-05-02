@@ -63,6 +63,12 @@ def _load_cached(
     return embeddings, phonemes, pitches
 
 
+def _cache_is_complete(
+    cached: Optional[Tuple[List[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]],
+) -> bool:
+    return cached is not None and cached[1] is not None and cached[2] is not None
+
+
 def _save_cache(
     cache_dir: Path, codec: str, utterance_id: str,
     embeddings: List[np.ndarray],
@@ -71,10 +77,10 @@ def _save_cache(
 ) -> None:
     path = _cache_path(cache_dir, codec, utterance_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    cache_fields = {f"layer_{i}": emb for i, emb in enumerate(embeddings)}
-    cache_fields["phonemes"] = phonemes
-    cache_fields["pitches"] = pitches
-    np.savez(file=path, **cache_fields)  # pyright: ignore[reportArgumentType]
+    payload = {f"layer_{i}": emb for i, emb in enumerate(embeddings)}
+    payload["phonemes"] = phonemes
+    payload["pitches"] = pitches
+    np.savez(file=path, **payload)  # pyright: ignore[reportArgumentType]
 
 
 # ── Per-utterance feature helpers ─────────────────────────────────────────────
@@ -146,7 +152,8 @@ def collect_bundle(
     Encode utterances with EnCodec and SpeechTokenizer; align labels.
 
     Each utterance is skipped if:
-      - Its TextGrid alignment file is missing.
+            - Its TextGrid alignment file is missing and a cache entry still needs
+                aligned phoneme or pitch features.
       - Either codec raises an exception during encoding.
 
     Embeddings, phonemes, and pitches are saved to
@@ -166,7 +173,7 @@ def collect_bundle(
             "embeddings": List of 8 ndarrays, each shape (N_tokens, embed_dim)
             "phonemes":   ndarray of shape (N_tokens,), dtype str
             "speakers":   ndarray of shape (N_tokens,), dtype str
-            "pitches":      ndarray of shape (N_tokens,), float32 (NaN = unvoiced)
+            "pitches":    ndarray of shape (N_tokens,), float32 (NaN = unvoiced)
     """
     encdc_layers:   List[List[np.ndarray]] = [[] for _ in range(NUM_LAYERS)]
     st_layers:      List[List[np.ndarray]] = [[] for _ in range(NUM_LAYERS)]
@@ -182,19 +189,18 @@ def collect_bundle(
         if max_utterances > 0 and count >= max_utterances:
             break
 
-        # Alignment must exist before we try loading audio
-        tg_path = _alignment_path(alignments_root, utterance_id)
-        phone_intervals = load_textgrid_phones(str(tg_path))
-        if not phone_intervals:
-            continue
-
         encdc_cached = _load_cached(cache_dir, "encodec", utterance_id)
         st_cached = _load_cached(cache_dir, "speechtokenizer", utterance_id)
+        needs_alignment = not (_cache_is_complete(encdc_cached) and _cache_is_complete(st_cached))
 
-        need_audio = (
-            encdc_cached is None or encdc_cached[1] is None or encdc_cached[2] is None or
-            st_cached is None or st_cached[1] is None or st_cached[2] is None
-        )
+        phone_intervals = None
+        if needs_alignment:
+            tg_path = _alignment_path(alignments_root, utterance_id)
+            phone_intervals = load_textgrid_phones(str(tg_path))
+            if not phone_intervals:
+                continue
+
+        need_audio = needs_alignment
         audio, sr = torchaudio.load(flac_path) if need_audio else (None, None)
 
         encdc_result = _get_utterance_data(

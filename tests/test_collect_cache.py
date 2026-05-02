@@ -10,7 +10,7 @@ migrating it is tracked separately.
 import numpy as np
 import pytest
 
-from encode.collect import NUM_LAYERS, _get_utterance_data, _load_cached, _save_cache
+from encode.collect import NUM_LAYERS, _get_utterance_data, _load_cached, _save_cache, collect_bundle
 
 
 def _make_embeddings(num_tokens: int = 3, embed_dim: int = 4) -> list:
@@ -121,3 +121,42 @@ def test_get_utterance_data_backfills_missing_pitches(tmp_path, monkeypatch):
     assert pitches_after is not None
     np.testing.assert_array_equal(phones_after, expected_phones)
     np.testing.assert_array_equal(np.isnan(pitches_after), np.isnan(expected_pitches))
+
+
+def test_collect_bundle_uses_full_cache_without_alignment_or_audio(tmp_path, monkeypatch):
+    enc_embeddings = _make_embeddings(num_tokens=3)
+    st_embeddings = _make_embeddings(num_tokens=2)
+    enc_phonemes = np.array(["AH", "B", "SIL"])
+    st_phonemes = np.array(["D", "EH"])
+    enc_pitches = np.array([120.0, np.nan, 200.0], dtype=np.float32)
+    st_pitches = np.array([90.0, 95.0], dtype=np.float32)
+
+    _save_cache(tmp_path, "encodec", "100-200-0001", enc_embeddings, enc_phonemes, enc_pitches)
+    _save_cache(tmp_path, "speechtokenizer", "100-200-0001", st_embeddings, st_phonemes, st_pitches)
+
+    def _should_not_run(*_args, **_kwargs):
+        raise AssertionError("warm-cache path should not access uncached inputs")
+
+    monkeypatch.setattr("encode.collect.load_textgrid_phones", _should_not_run)
+    monkeypatch.setattr("encode.collect.torchaudio.load", _should_not_run)
+    monkeypatch.setattr("encode.collect.encodec_encode", _should_not_run)
+    monkeypatch.setattr("encode.collect.st_encode", _should_not_run)
+
+    enc_bundle, st_bundle = collect_bundle(
+        [("missing.flac", "speaker-1", "100-200-0001")],
+        encodec_model=None,
+        st_model=None,
+        alignments_root="missing-alignments",
+        cache_dir=tmp_path,
+    )
+
+    for i in range(NUM_LAYERS):
+        np.testing.assert_array_equal(enc_bundle["embeddings"][i], enc_embeddings[i])
+        np.testing.assert_array_equal(st_bundle["embeddings"][i], st_embeddings[i])
+    np.testing.assert_array_equal(enc_bundle["phonemes"], enc_phonemes)
+    np.testing.assert_array_equal(st_bundle["phonemes"], st_phonemes)
+    np.testing.assert_array_equal(np.isnan(enc_bundle["pitches"]), np.isnan(enc_pitches))
+    np.testing.assert_array_equal(enc_bundle["pitches"][~np.isnan(enc_pitches)], enc_pitches[~np.isnan(enc_pitches)])
+    np.testing.assert_array_equal(st_bundle["pitches"], st_pitches)
+    np.testing.assert_array_equal(enc_bundle["speakers"], np.array(["speaker-1", "speaker-1", "speaker-1"]))
+    np.testing.assert_array_equal(st_bundle["speakers"], np.array(["speaker-1", "speaker-1"]))
