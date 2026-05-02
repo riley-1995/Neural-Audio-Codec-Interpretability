@@ -89,7 +89,7 @@ def plot_phoneme(
         title="Phoneme Identity — Linear Probe by RVQ Layer",
         output_path=str(Path(output_dir) / "phoneme_probing.png"),
         chance_a=chance,
-        chance_b=chance,
+        chance_b=None,
     )
 
 
