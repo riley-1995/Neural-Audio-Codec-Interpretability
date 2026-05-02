@@ -223,16 +223,18 @@ __marimo__/
 .claudeignore
 
 # LibriSpeech audio data (large binary files — never commit)
-data/LibriSpeech*/
-data/*.flac
-data/*.wav
-data/*.mp3
+LibriSpeech*/
+*.flac
+*.wav
+*.mp3
+
+# LibriSpeech alignment data (large, download separately)
+LibriSpeech-Alignments/
+LibriSpeech-Alignments.zip
+LibriSpeech.zip
 
 # Background literature PDFs (cite with links in README instead)
 BackgroundLiterature/
-
-# Forced alignment TextGrids (large, download separately)
-data/alignments/
 
 # Embedding cache and model outputs (large NPZ files)
 results/cache/
