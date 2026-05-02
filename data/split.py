@@ -19,6 +19,11 @@ UttEntry = Tuple[str, str, str]
 def scan_utterance_paths(librispeech_root: str, split: str) -> List[UttEntry]:
     """Return a sorted list of (flac_path, speaker_id, utterance_id) for a split."""
     split_root = Path(librispeech_root) / split
+    if not split_root.exists():
+        raise FileNotFoundError(f"LibriSpeech split path does not exist: {split_root}")
+    if not split_root.is_dir():
+        raise NotADirectoryError(f"LibriSpeech split path is not a directory: {split_root}")
+
     entries: List[UttEntry] = []
 
     for flac_path in split_root.rglob("*.flac"):
