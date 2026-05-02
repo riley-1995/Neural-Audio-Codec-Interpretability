@@ -37,6 +37,22 @@ def test_scan_utterance_paths_not_directory_raises(tmp_path):
         scan_utterance_paths(str(tmp_path), "train-clean-100")
 
 
+def test_scan_utterance_paths_filename_must_match_expected_format(tmp_path):
+    split_root = tmp_path / "train-clean-100"
+    _touch(split_root / "100" / "001" / "100-001-0001-extra.flac")
+
+    with pytest.raises(ValueError, match="Malformed LibriSpeech utterance filename"):
+        scan_utterance_paths(str(tmp_path), "train-clean-100")
+
+
+def test_scan_utterance_paths_path_filename_mismatch_raises(tmp_path):
+    split_root = tmp_path / "train-clean-100"
+    _touch(split_root / "100" / "001" / "999-001-0001.flac")
+
+    with pytest.raises(ValueError, match="path/filename mismatch"):
+        scan_utterance_paths(str(tmp_path), "train-clean-100")
+
+
 def test_split_utterances_deterministic_no_overlap_and_conservation(tmp_path):
     entries = []
     for speaker in ["100", "200", "300"]:
@@ -170,6 +186,30 @@ def test_split_utterances_missing_json_keys_raises(tmp_path):
         split_utterances(entries, eval_frac=0.2, seed=1, save_path=save_path)
 
 
+def test_split_utterances_non_list_json_values_raises(tmp_path):
+    entries = [("/fake/100-001-0001.flac", "100", "100-001-0001")]
+    save_path = tmp_path / "split.json"
+    save_path.write_text(json.dumps({"train": "100-001-0001", "eval": []}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be lists"):
+        split_utterances(entries, eval_frac=0.2, seed=1, save_path=save_path)
+
+
+def test_split_utterances_cached_ids_must_match_current_entries(tmp_path):
+    entries = [
+        ("/fake/100-001-0001.flac", "100", "100-001-0001"),
+        ("/fake/100-001-0002.flac", "100", "100-001-0002"),
+    ]
+    save_path = tmp_path / "split.json"
+    save_path.write_text(
+        json.dumps({"train": ["100-001-0001"], "eval": ["unknown-uid"]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="cached IDs do not match current entries"):
+        split_utterances(entries, eval_frac=0.2, seed=1, save_path=save_path)
+
+
 def test_iter_librispeech_yields_expected_fields(tmp_path, monkeypatch):
     split_root = tmp_path / "train-clean-100"
     _touch(split_root / "123" / "456" / "123-456-0001.flac")
@@ -194,9 +234,17 @@ def test_iter_librispeech_missing_split_raises(tmp_path):
         list(iter_librispeech(str(tmp_path), "missing"))
 
 
+def test_iter_librispeech_split_not_directory_raises(tmp_path):
+    split_path = tmp_path / "train-clean-100"
+    split_path.write_text("not a directory", encoding="utf-8")
+
+    with pytest.raises(NotADirectoryError, match="not a directory"):
+        list(iter_librispeech(str(tmp_path), "train-clean-100"))
+
+
 def test_iter_librispeech_malformed_filename_raises(tmp_path, monkeypatch):
     split_root = tmp_path / "train-clean-100"
-    _touch(split_root / "123" / "456" / "badname.flac")
+    _touch(split_root / "123" / "456" / "123-456-0001-extra.flac")
 
     def fake_load(_path):
         return torch.zeros((1, 1600), dtype=torch.float32), 16000
@@ -209,14 +257,15 @@ def test_iter_librispeech_malformed_filename_raises(tmp_path, monkeypatch):
 
 def test_iter_librispeech_load_failure_has_context(tmp_path, monkeypatch):
     split_root = tmp_path / "train-clean-100"
-    _touch(split_root / "123" / "456" / "123-456-0001.flac")
+    failing_path = split_root / "123" / "456" / "123-456-0001.flac"
+    _touch(failing_path)
 
     def fake_load(_path):
         raise OSError("decode failure")
 
     monkeypatch.setattr("data.load_librispeech.torchaudio.load", fake_load)
 
-    with pytest.raises(RuntimeError, match="Failed to load audio file"):
+    with pytest.raises(RuntimeError, match=f"{failing_path}"):
         list(iter_librispeech(str(tmp_path), "train-clean-100"))
 
 

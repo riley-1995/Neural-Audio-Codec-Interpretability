@@ -44,7 +44,7 @@ def iter_librispeech(root: str, split: str = "train-clean-100") -> Iterator[Utte
         speaker_id = flac_path.parent.parent.name
         chapter_id = flac_path.parent.name
         parts = flac_path.stem.split("-")
-        if len(parts) < 3:
+        if len(parts) != 3:
             raise ValueError(
                 f"Malformed LibriSpeech utterance filename: {flac_path.name}. "
                 "Expected <speaker>-<chapter>-<utterance>.flac"
