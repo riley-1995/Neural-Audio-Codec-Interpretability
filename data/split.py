@@ -7,8 +7,11 @@ runs so the exact same utterances are always in train vs eval.
 
 import json
 from collections import defaultdict
+from json import JSONDecodeError
 from pathlib import Path
 from typing import Dict, List, Tuple
+
+from data._librispeech_layout import validate_librispeech_entry
 
 import numpy as np
 
@@ -27,9 +30,7 @@ def scan_utterance_paths(librispeech_root: str, split: str) -> List[UttEntry]:
     entries: List[UttEntry] = []
 
     for flac_path in split_root.rglob("*.flac"):
-        rel_path = flac_path.relative_to(split_root)
-        speaker_id = rel_path.parts[0]
-        utterance_id = flac_path.stem
+        speaker_id, _chapter_id, utterance_id = validate_librispeech_entry(flac_path, split_root)
         entries.append((str(flac_path), speaker_id, utterance_id))
     entries.sort(key=lambda x: x[2])   # deterministic order by utterance ID
     return entries
@@ -53,11 +54,54 @@ def split_utterances(
         raise ValueError(f"eval_frac must be in [0, 1), current value: {eval_frac}")
 
     if save_path.exists() and not force:
-        with open(save_path) as f:
-            saved = json.load(f)
+        try:
+            with open(save_path) as f:
+                saved = json.load(f)
+        except JSONDecodeError as e:
+            raise ValueError(f"Malformed split JSON at {save_path}: {e}") from e
+
+        if not isinstance(saved, dict) or "train" not in saved or "eval" not in saved:
+            raise ValueError(
+                f"Invalid split JSON at {save_path}: expected keys 'train' and 'eval'"
+            )
+        if not isinstance(saved["train"], list) or not isinstance(saved["eval"], list):
+            raise ValueError(
+                f"Invalid split JSON at {save_path}: 'train' and 'eval' must be lists"
+            )
+
+        for uid in saved["train"] + saved["eval"]:
+            if not isinstance(uid, str):
+                raise ValueError(
+                    f"Invalid split JSON at {save_path}: all utterance IDs must be strings"
+                )
+
+        combined = saved["train"] + saved["eval"]
+        if len(combined) != len(set(combined)):
+            raise ValueError(
+                f"Invalid split JSON at {save_path}: utterance IDs must be unique"
+            )
+
+        overlap = set(saved["train"]) & set(saved["eval"])
+        if overlap:
+            raise ValueError(
+                f"Invalid split JSON at {save_path}: 'train' and 'eval' must be disjoint"
+            )
+
         by_id = {e[2]: e for e in entries}
-        train = [by_id[uid] for uid in saved["train"] if uid in by_id]
-        eval_ = [by_id[uid] for uid in saved["eval"]  if uid in by_id]
+        saved_ids = set(saved["train"]) | set(saved["eval"])
+        current_ids = set(by_id.keys())
+        missing_ids = sorted(current_ids - saved_ids)
+        unknown_ids = sorted(saved_ids - current_ids)
+        if missing_ids or unknown_ids:
+            raise ValueError(
+                "Invalid split JSON at "
+                f"{save_path}: cached IDs do not match current entries "
+                f"(missing={len(missing_ids)}, unknown={len(unknown_ids)}). "
+                "Re-run with force=True (--force_resplit) to recompute the split."
+            )
+
+        train = [by_id[uid] for uid in saved["train"]]
+        eval_ = [by_id[uid] for uid in saved["eval"]]
         print(f"Loaded split from {save_path}  (train={len(train)}, eval={len(eval_)})")
         return train, eval_
 
@@ -75,7 +119,7 @@ def split_utterances(
         n_utt = len(shuffled)
         # Keep approximately eval_frac in eval while preserving at least one
         # training utterance for speakers that have multiple utterances.
-        if n_utt <= 1:
+        if n_utt <= 1 or eval_frac == 0.0:
             n_eval = 0
         else:
             n_eval = max(1, round(n_utt * eval_frac))

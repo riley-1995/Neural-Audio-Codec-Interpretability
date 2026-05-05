@@ -222,16 +222,15 @@ __marimo__/
 .claude/
 .claudeignore
 
-# LibriSpeech audio data (large binary files — never commit)
-LibriSpeech*/
-*.flac
-*.wav
-*.mp3
+# LibriSpeech data artifacts (large, download separately)
+data/LibriSpeech/
+data/LibriSpeech.zip
+data/LibriSpeech-TextGrids/
+data/LibriSpeech-TextGrids.zip
 
-# LibriSpeech alignment data (large, download separately)
-LibriSpeech-Alignments/
-LibriSpeech-Alignments.zip
-LibriSpeech.zip
+# SpeechTokenizer checkpoint files (download separately from SpeechTokenizer repo)
+data/SpeechTokenizer/
+data/SpeechTokenizer.zip
 
 # Background literature PDFs (cite with links in README instead)
 BackgroundLiterature/
