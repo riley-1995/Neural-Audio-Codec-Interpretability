@@ -22,6 +22,23 @@ def _load(path: Path):
         return pickle.load(f)
 
 
+def _encode_known_labels(
+    encoder: LabelEncoder,
+    labels: np.ndarray,
+    task_name: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Encode only labels observed during training and return (encoded, mask)."""
+    known_mask = np.isin(labels, encoder.classes_)
+    skipped = int((~known_mask).sum())
+    if skipped:
+        print(f"  [{task_name}] Skipping {skipped} eval tokens with unseen labels")
+
+    if not known_mask.any():
+        return np.array([], dtype=np.int64), known_mask
+
+    return np.asarray(encoder.transform(labels[known_mask])), known_mask
+
+
 def evaluate_probes(
     embeddings_by_layer: List[np.ndarray],
     phoneme_labels: np.ndarray,
@@ -58,8 +75,16 @@ def evaluate_probes(
             "speaker": _load(probe_path / "label_encoder_speaker.pkl"),
         }
 
-    phoneme_enc = label_encoders["phoneme"].transform(phoneme_labels)
-    speaker_enc = label_encoders["speaker"].transform(speaker_labels)
+    phoneme_enc, phoneme_mask = _encode_known_labels(
+        label_encoders["phoneme"],
+        phoneme_labels,
+        "phoneme",
+    )
+    speaker_enc, speaker_mask = _encode_known_labels(
+        label_encoders["speaker"],
+        speaker_labels,
+        "speaker",
+    )
     voiced_mask = ~np.isnan(pitch_values)
 
     results: Dict[str, List[float]] = {
@@ -74,15 +99,27 @@ def evaluate_probes(
 
         # Phoneme
         probe  = _load(probe_path / f"probe_{codec_name}_layer{layer_num}_phoneme.pkl")
-        y_pred = probe.predict(X)
-        results["phoneme_acc"].append(accuracy_score(phoneme_enc, y_pred))
-        results["phoneme_f1"] .append(f1_score(phoneme_enc, y_pred, average="macro", zero_division=0))
+        if phoneme_enc.size > 0:
+            y_pred = probe.predict(X[phoneme_mask])
+            results["phoneme_acc"].append(accuracy_score(phoneme_enc, y_pred))
+            results["phoneme_f1"].append(
+                f1_score(phoneme_enc, y_pred, average="macro", zero_division=0)
+            )
+        else:
+            results["phoneme_acc"].append(np.nan)
+            results["phoneme_f1"].append(np.nan)
 
         # Speaker
         probe  = _load(probe_path / f"probe_{codec_name}_layer{layer_num}_speaker.pkl")
-        y_pred = probe.predict(X)
-        results["speaker_acc"].append(accuracy_score(speaker_enc, y_pred))
-        results["speaker_f1"] .append(f1_score(speaker_enc, y_pred, average="macro", zero_division=0))
+        if speaker_enc.size > 0:
+            y_pred = probe.predict(X[speaker_mask])
+            results["speaker_acc"].append(accuracy_score(speaker_enc, y_pred))
+            results["speaker_f1"].append(
+                f1_score(speaker_enc, y_pred, average="macro", zero_division=0)
+            )
+        else:
+            results["speaker_acc"].append(np.nan)
+            results["speaker_f1"].append(np.nan)
 
         # Pitch regression on voiced frames only
         probe = _load(probe_path / f"probe_{codec_name}_layer{layer_num}_pitch.pkl")
