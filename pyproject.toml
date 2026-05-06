@@ -13,6 +13,9 @@ dependencies = [
     "tqdm",
     "soundfile",
     "scipy",
+    "beartype",
+    "tensorboard",
+    "huggingface_hub",
 ]
 
 [build-system]
