@@ -5,9 +5,11 @@ import pytest
 
 from probe.evaluate_probes import evaluate_probes
 from probe.train_probes import (
+    MAX_TRAIN_TOKENS,
     NUM_LAYERS,
     ProbeTrainingBundle,
     ProbeTrainingError,
+    _fit_classification_probe,
     fit_label_encoders,
     train_probes,
     train_probes_for_codecs,
@@ -222,3 +224,31 @@ def test_train_probes_for_codecs_rejects_invalid_max_iter(tmp_path):
             max_workers=2,
             classification_max_iter=0,
         )
+
+
+def test_fit_classification_probe_subsamples_to_cap_deterministically(monkeypatch):
+    total_rows = MAX_TRAIN_TOKENS + 137
+    X = np.arange(total_rows * 3, dtype=np.float32).reshape(total_rows, 3)
+    y = (np.arange(total_rows) % 11).astype(np.int32)
+    fit_calls = []
+
+    class _FakeLogisticRegression:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def fit(self, X_fit, y_fit):
+            fit_calls.append((X_fit.copy(), y_fit.copy()))
+            return self
+
+    monkeypatch.setattr("probe.train_probes.LogisticRegression", _FakeLogisticRegression)
+
+    _fit_classification_probe(X, y, max_iter=321)
+    _fit_classification_probe(X, y, max_iter=321)
+
+    assert len(fit_calls) == 2
+    for X_fit, y_fit in fit_calls:
+        assert X_fit.shape == (MAX_TRAIN_TOKENS, 3)
+        assert y_fit.shape == (MAX_TRAIN_TOKENS,)
+
+    np.testing.assert_array_equal(fit_calls[0][0], fit_calls[1][0])
+    np.testing.assert_array_equal(fit_calls[0][1], fit_calls[1][1])

@@ -20,6 +20,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from matplotlib.colors import Normalize
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 
@@ -30,6 +31,7 @@ NUM_LAYERS     = 8
 N_TOKENS       = 10_000
 MAX_PER_UTT    = 40
 PCA_COMPONENTS = 50
+TSNE_PERPLEXITY = 30
 
 _CODECS       = ("encodec", "speechtokenizer")
 _CODEC_LABELS = {"encodec": "EnCodec", "speechtokenizer": "SpeechTokenizer"}
@@ -98,7 +100,8 @@ def load_sample(cache_dir: Path, codec: str, seed: int = 42):
     rng      = np.random.RandomState(seed)
     cdir     = cache_dir / codec
     files    = sorted(cdir.glob("*.npz"))
-    rng.shuffle(files)
+    shuffled_idx = rng.permutation(len(files))
+    files = [files[i] for i in shuffled_idx]
 
     lbuf = [[] for _ in range(NUM_LAYERS)]
     pbuf, sbuf, pitbuf = [], [], []
@@ -135,12 +138,24 @@ def load_sample(cache_dir: Path, codec: str, seed: int = 42):
 # ── t-SNE ─────────────────────────────────────────────────────────────────────
 
 def run_tsne(X: np.ndarray, seed: int = 42) -> np.ndarray:
-    X     = X.astype(np.float32)
-    n_pca = min(PCA_COMPONENTS, X.shape[1], X.shape[0] - 1)
-    if X.shape[1] > n_pca:
+    X = np.asarray(X, dtype=np.float32)
+    if X.ndim != 2:
+        raise ValueError(f"run_tsne expects a 2D array, got shape {X.shape}")
+
+    n_samples, n_features = X.shape
+    if n_samples < 2:
+        raise ValueError(
+            "run_tsne requires at least 2 samples; "
+            f"got {n_samples}. Increase sampled tokens or lower filtering."
+        )
+
+    n_pca = min(PCA_COMPONENTS, n_features, n_samples - 1)
+    if n_features > n_pca:
         X = PCA(n_components=n_pca, random_state=seed).fit_transform(X)
+
+    perplexity = min(TSNE_PERPLEXITY, n_samples - 1)
     return TSNE(
-        n_components=2, perplexity=30, max_iter=1000,
+        n_components=2, perplexity=perplexity, max_iter=1000,
         init="pca", learning_rate="auto", random_state=seed,
     ).fit_transform(X)
 
@@ -286,8 +301,8 @@ def plot_pitch(tsne_per_codec, pitches_per_codec, out_dir: Path):
 
     p_lo  = np.percentile(all_voiced, 5)
     p_hi  = np.percentile(all_voiced, 95)
-    norm  = plt.Normalize(vmin=p_lo, vmax=p_hi)
-    cmap  = plt.cm.coolwarm   # blue=low pitch, red=high pitch
+    norm  = Normalize(vmin=float(p_lo), vmax=float(p_hi))
+    cmap  = plt.get_cmap("coolwarm")   # blue=low pitch, red=high pitch
 
     fig, axes = _make_grid("Pitch F0 (Hz) — RVQ Layer t-SNE")
 
@@ -315,9 +330,9 @@ def plot_pitch(tsne_per_codec, pitches_per_codec, out_dir: Path):
             _clean_ax(ax)
 
     # shared colorbar: reserve space on the right
-    fig.tight_layout(rect=[0, 0, 0.92, 1])
+    fig.tight_layout(rect=(0.0, 0.0, 0.92, 1.0))
     if sc_last is not None:
-        cbar_ax = fig.add_axes([0.94, 0.12, 0.018, 0.75])
+        cbar_ax = fig.add_axes((0.94, 0.12, 0.018, 0.75))
         cb = fig.colorbar(sc_last, cax=cbar_ax)
         cb.set_label("F0 (Hz)", fontsize=10)
         cb.ax.tick_params(labelsize=8)

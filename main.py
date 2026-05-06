@@ -229,10 +229,9 @@ def main():
     # Speaker encoder is fit on ALL training speaker IDs (not just the capped
     # subset) so eval tokens from unseen-in-cap speakers aren't discarded.
     print("Fitting label encoders...")
-    all_train_speakers = np.array([e[1] for e in train_entries])
-    combined_speakers = np.concatenate([enc_train["speakers"], all_train_speakers])
+    all_train_speakers = np.asarray([entry[1] for entry in train_entries])
     label_encoders = fit_label_encoders(
-        enc_train["phonemes"], combined_speakers, probe_dir
+        enc_train["phonemes"], all_train_speakers, probe_dir
     )
 
     # ── Train all probes through a shared dispatcher ───────────────────────────
