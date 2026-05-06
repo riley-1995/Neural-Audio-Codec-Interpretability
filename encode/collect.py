@@ -269,8 +269,16 @@ def collect_bundle(
             raise ValueError(
                 "No utterances were collected. Check alignment files and codec errors before training probes."
             )
+        # Clear each layer's list immediately after concatenation so the input
+        # chunks are freed before the next layer is allocated.  Without this,
+        # the list comprehension keeps all 8 layers' input arrays alive alongside
+        # all 8 output arrays, doubling peak RAM (~816 GB for ST at 25 k utts).
+        embeddings = []
+        for i in range(NUM_LAYERS):
+            embeddings.append(np.concatenate(layers[i], axis=0))
+            layers[i].clear()
         return Bundle(
-            embeddings=[np.concatenate(layers[i], axis=0) for i in range(NUM_LAYERS)],
+            embeddings=embeddings,
             phonemes=np.concatenate(phonemes),
             speakers=np.array(speakers),
             pitches=(np.concatenate(pitches) if pitches else np.array([], dtype=np.float32)),

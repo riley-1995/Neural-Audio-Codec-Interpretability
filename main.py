@@ -21,11 +21,13 @@ Usage (full run — embeddings cached after first pass):
 
 import argparse
 from dataclasses import dataclass
+from datetime import datetime
 import os
 import pickle
 from pathlib import Path
 from typing import Any, Mapping
 
+import numpy as np
 import torch
 
 from data.split import scan_utterance_paths, split_utterances
@@ -125,7 +127,8 @@ def _parse_args():
                    help="Root of TextGrid alignments for the training split")
     p.add_argument("--st_ckpt",   required=True, help="SpeechTokenizer .pt checkpoint")
     p.add_argument("--st_config", required=True, help="SpeechTokenizer config.json")
-    p.add_argument("--output_dir", default="results")
+    p.add_argument("--output_dir", default=None,
+                   help="Output directory (default: results_cap{N}_{TIMESTAMP})")
     p.add_argument("--split", default="train-clean-100",
                    help="LibriSpeech split to use (e.g. train-clean-100)")
     p.add_argument("--eval_frac", type=float, default=0.1,
@@ -188,12 +191,19 @@ def main():
     device = _resolve_device(args.device)
     print(f"Device: {device}")
 
+    if args.output_dir is None:
+        cap_str = str(args.max_utterances) if args.max_utterances > 0 else "full"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        args.output_dir = f"results_cap{cap_str}_{timestamp}"
+
     out        = Path(args.output_dir)
     probe_dir  = out / "probes"
     fig_dir    = out / "figures"
     cache_dir  = out / "cache"
     split_path = out / "split.json"
     probe_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"Output directory: {out}")
 
     # ── Load models ────────────────────────────────────────────────────────────
     print("Loading EnCodec...")
@@ -216,9 +226,12 @@ def main():
     )
 
     # ── Fit label encoders once; shared across both codecs and both splits ──────
+    # Speaker encoder is fit on ALL training speaker IDs (not just the capped
+    # subset) so eval tokens from unseen-in-cap speakers aren't discarded.
     print("Fitting label encoders...")
+    all_train_speakers = np.asarray([entry[1] for entry in train_entries])
     label_encoders = fit_label_encoders(
-        enc_train["phonemes"], enc_train["speakers"], probe_dir
+        enc_train["phonemes"], all_train_speakers, probe_dir
     )
 
     # ── Train all probes through a shared dispatcher ───────────────────────────

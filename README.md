@@ -79,6 +79,10 @@ This project extends [Sadok et al. 2025](https://arxiv.org/abs/2506.04492) (*Bri
 │   └── results.pkl                # Raw metrics dict
 │
 ├── proposal/                      # Project proposal (LaTeX + PDF)
+├── scripts/
+│   ├── setup_env_a100.sh          # A100 environment setup (uv + CUDA 12.4 PyTorch)
+│   ├── run_a100_probes.sh         # A100 pipeline launcher
+│   └── run_a100_probes.slurm      # Slurm wrapper for A100 launcher
 ├── pyproject.toml                 # Dependencies (uv-compatible)
 └── .gitignore
 ```
@@ -126,6 +130,18 @@ uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu1
 ```bash
 uv pip install -e .
 ```
+
+### 6. A100 shortcut setup script (optional)
+
+For the project A100 environment, run:
+
+```bash
+bash scripts/setup_env_a100.sh
+```
+
+The script derives `PROJECT_ROOT` from its own location, creates `.venv`, installs CUDA 12.4 PyTorch, installs dependencies from `pyproject.toml`, and redirects uv/PyTorch/Hugging Face caches out of `$HOME` using the hardcoded project storage path.
+
+If reproducing this work on a different A100 cluster/location, edit the `STORAGE` value in `scripts/setup_env_a100.sh` before running.
 
 ---
 

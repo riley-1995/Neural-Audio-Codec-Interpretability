@@ -23,6 +23,7 @@ from sklearn.preprocessing import LabelEncoder
 NUM_LAYERS = 8
 PROBE_TASKS = ("phoneme", "speaker", "pitch")
 DEFAULT_CLASSIFICATION_MAX_ITER = 1000
+MAX_TRAIN_TOKENS = 200_000   # subsample cap; 200k is ample for linear probing
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,10 @@ def _fit_classification_probe(
     y: np.ndarray,
     max_iter: int = DEFAULT_CLASSIFICATION_MAX_ITER,
 ) -> LogisticRegression:
+    if len(X) > MAX_TRAIN_TOKENS:
+        rng = np.random.RandomState(42)
+        idx = rng.choice(len(X), MAX_TRAIN_TOKENS, replace=False)
+        X, y = X[idx], y[idx]
     # class_weight="balanced" compensates for skewed phoneme/speaker distributions.
     clf = LogisticRegression(
         max_iter=max_iter,
