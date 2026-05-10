@@ -33,17 +33,19 @@ def _plot_two_metrics(
     ylabel_b: str,
     title: str,
     output_path: str,
-    chance_a: Optional[float] = None,
-    chance_b: Optional[float] = None,
+    baseline_a: Optional[float] = None,
+    baseline_b: Optional[float] = None,
+    baseline_name_a: str = "Baseline",
+    baseline_name_b: str = "Baseline",
     invert_a: bool = False,
 ) -> None:
     """Render two metric subplots side-by-side for both codecs."""
     fig, axes = plt.subplots(1, 2, figsize=(12, 4))
     fig.suptitle(title, fontsize=14, fontweight="bold")
 
-    for ax, metric, ylabel, chance, invert in [
-        (axes[0], metric_a, ylabel_a, chance_a, invert_a),
-        (axes[1], metric_b, ylabel_b, chance_b, False),
+    for ax, metric, ylabel, baseline, baseline_name, invert in [
+        (axes[0], metric_a, ylabel_a, baseline_a, baseline_name_a, invert_a),
+        (axes[1], metric_b, ylabel_b, baseline_b, baseline_name_b, False),
     ]:
         for codec, codec_results in results.items():
             ax.plot(
@@ -56,14 +58,14 @@ def _plot_two_metrics(
                 markersize=6,
             )
 
-        # Dashed chance-level reference line
-        if chance is not None:
+        # Dashed baseline reference line
+        if baseline is not None:
             ax.axhline(
-                chance,
+                baseline,
                 color="gray",
                 linestyle="--",
                 linewidth=1,
-                label=f"Chance ({chance:.3f})",
+                label=f"{baseline_name} ({baseline:.3f})",
             )
 
         ax.set_xlabel("RVQ Layer", fontsize=12)
@@ -86,15 +88,17 @@ def plot_phoneme(
     output_dir: str,
     n_phonemes: int = 0,
 ) -> None:
-    chance = 1.0 / n_phonemes if n_phonemes > 0 else None
+    baseline = 1.0 / n_phonemes if n_phonemes > 0 else None
     _plot_two_metrics(
         results,
         metric_a="phoneme_acc", ylabel_a="Accuracy",
         metric_b="phoneme_f1",  ylabel_b="Macro-F1",
         title="Phoneme Identity — Linear Probe by RVQ Layer",
         output_path=str(Path(output_dir) / "phoneme_probing.png"),
-        chance_a=chance,
-        chance_b=chance,
+        baseline_a=baseline,
+        baseline_b=baseline,
+        baseline_name_a="Chance",
+        baseline_name_b="Chance",
     )
 
 
@@ -103,15 +107,17 @@ def plot_speaker(
     output_dir: str,
     n_speakers: int = 0,
 ) -> None:
-    chance = 1.0 / n_speakers if n_speakers > 0 else None
+    baseline = 1.0 / n_speakers if n_speakers > 0 else None
     _plot_two_metrics(
         results,
         metric_a="speaker_acc", ylabel_a="Accuracy",
         metric_b="speaker_f1",  ylabel_b="Macro-F1",
         title="Speaker Identity — Linear Probe by RVQ Layer",
         output_path=str(Path(output_dir) / "speaker_probing.png"),
-        chance_a=chance,
-        chance_b=chance,
+        baseline_a=baseline,
+        baseline_b=baseline,
+        baseline_name_a="Chance",
+        baseline_name_b="Chance",
     )
 
 
@@ -122,6 +128,9 @@ def plot_pitch(results: Dict[str, Dict], output_dir: str) -> None:
         metric_b="pitch_r2",  ylabel_b="R²  ↑ higher is better",
         title="Pitch (F0) — Linear Regression by RVQ Layer",
         output_path=str(Path(output_dir) / "pitch_probing.png"),
+        baseline_a=None,
+        baseline_b=0.0,
+        baseline_name_b="Mean predictor baseline",
         invert_a=True,
     )
 
