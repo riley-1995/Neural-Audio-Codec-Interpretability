@@ -8,12 +8,17 @@ Produces 3 figures (one per task), each with two side-by-side subplots:
 
 A dashed horizontal chance-level line is drawn for classification tasks so
 readers can immediately see how much above random each probe performs.
+
+Can be run as a script to visualize results from a saved results.pkl:
+    python -m visualize.plot_curves --results_dir <results_dir>
 """
 
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import matplotlib.pyplot as plt
+import argparse
+import pickle
 
 LAYERS = list(range(1, 9))
 COLORS = {"encodec": "#1f77b4", "speechtokenizer": "#ff7f0e"}
@@ -89,7 +94,7 @@ def plot_phoneme(
         title="Phoneme Identity — Linear Probe by RVQ Layer",
         output_path=str(Path(output_dir) / "phoneme_probing.png"),
         chance_a=chance,
-        chance_b=None,
+        chance_b=chance,
     )
 
 
@@ -106,7 +111,7 @@ def plot_speaker(
         title="Speaker Identity — Linear Probe by RVQ Layer",
         output_path=str(Path(output_dir) / "speaker_probing.png"),
         chance_a=chance,
-        chance_b=None,
+        chance_b=chance,
     )
 
 
@@ -140,3 +145,29 @@ def plot_all(
     plot_phoneme(results, output_dir, n_phonemes=n_phonemes)
     plot_speaker(results, output_dir, n_speakers=n_speakers)
     plot_pitch(results, output_dir)
+
+def main():
+    p = argparse.ArgumentParser(description="Visualize probing results from results.pkl")
+    p.add_argument("--results_dir", required=True,
+                   help="Path to results directory containing results.pkl")
+    p.add_argument("--n_phonemes", type=int, default=71,
+                   help="Number of phoneme classes (for chance line)")
+    p.add_argument("--n_speakers", type=int, default=251,
+                   help="Number of speaker classes (for chance line)")
+    args = p.parse_args()
+
+    results_path = Path(args.results_dir) / "results.pkl"
+    if not results_path.exists():
+        raise FileNotFoundError(f"No results.pkl found at {results_path}")
+
+    with open(results_path, "rb") as f:
+        results = pickle.load(f)
+
+    fig_dir = Path(args.results_dir) / "figures"
+    print(f"Visualizing results in {fig_dir}...")
+    plot_all(results, str(fig_dir), n_phonemes=args.n_phonemes, n_speakers=args.n_speakers)
+    print("Done!")
+
+
+if __name__ == "__main__":
+    main()
