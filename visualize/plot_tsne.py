@@ -1,14 +1,14 @@
 """
 t-SNE visualizations of codec RVQ layer embeddings, colored by phoneme
-group, speaker identity, and pitch — inspired by Sadok et al. 2025.
+group, speaker identity, and pitch (inspired by Sadok et al. 2025).
 
-Layout for each figure: 2 rows (EnCodec / SpeechTokenizer) × 4 columns
+Layout for each figure: 2 rows (EnCodec / SpeechTokenizer) x 4 columns
 (RVQ layers 1, 2, 4, 8).
 
-Run on the server:
-    python visualize/plot_tsne.py \\
-        --cache_dir  results_capfull_20260503_071048/cache \\
-        --output_dir results_capfull_20260503_071048/figures
+Can be run as a script to visualize cached embeddings:
+    python -m visualize.plot_tsne \
+        --cache_dir path/to/cache \
+        --output_dir path/to/output/figures
 """
 
 import argparse
@@ -346,7 +346,9 @@ def plot_pitch(tsne_per_codec, pitches_per_codec, out_dir: Path):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(
+        description="Visualize t-SNE projections from cached codec embeddings"
+    )
     ap.add_argument("--cache_dir",  required=True)
     ap.add_argument("--output_dir", required=True)
     ap.add_argument("--seed", type=int, default=42)
